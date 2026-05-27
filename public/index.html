@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';">
+    <title>Ronin Forge</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- Titlebar -->
+<div id="titlebar">
+    <div id="titlebar-logo">
+        <span class="icon">🔥</span>
+        <span><span class="brand">Ronin</span> Forge</span>
+    </div>
+    <div id="titlebar-controls">
+        <button class="tb-btn" id="btnMinimize" title="Minimize">—</button>
+        <button class="tb-btn close" id="btnClose" title="Close">✕</button>
+    </div>
+</div>
+
+<div id="app">
+    <!-- Sidebar -->
+    <nav id="sidebar">
+        <div class="sidebar-label">Setup Wizard</div>
+        <div class="step-item active" data-step="0">
+            <div class="step-num"><span>1</span></div>
+            <div class="step-label">Select Game</div>
+        </div>
+        <div class="step-item" data-step="1">
+            <div class="step-num"><span>2</span></div>
+            <div class="step-label">Install Location</div>
+        </div>
+        <div class="step-item" data-step="2">
+            <div class="step-num"><span>3</span></div>
+            <div class="step-label">Configure</div>
+        </div>
+        <div class="step-item" data-step="3">
+            <div class="step-num"><span>4</span></div>
+            <div class="step-label">Review</div>
+        </div>
+        <div class="step-item" data-step="4">
+            <div class="step-num"><span>5</span></div>
+            <div class="step-label">Installing</div>
+        </div>
+        <div class="step-item" data-step="5">
+            <div class="step-num"><span>6</span></div>
+            <div class="step-label">Complete</div>
+        </div>
+    </nav>
+
+    <!-- Main content -->
+    <div id="main">
+
+        <!-- Step 0: Select Game -->
+        <div class="step-view active" id="step-0">
+            <h2>Select a Game</h2>
+            <p class="subtitle">Choose the game server you want to set up. Ronin Forge will download and configure it automatically.</p>
+            <div class="game-grid" id="gameGrid"></div>
+        </div>
+
+        <!-- Step 1: Install Location -->
+        <div class="step-view" id="step-1">
+            <h2>Install Location</h2>
+            <p class="subtitle">Choose where to install the server files. Use a fast drive with enough free space.</p>
+
+            <div class="field full-width" style="margin-bottom:8px;">
+                <label>Install Directory</label>
+                <div class="dir-picker">
+                    <input type="text" id="installDir" placeholder="e.g. C:\Servers\MyServer" spellcheck="false">
+                    <button class="btn btn-secondary" id="btnBrowseDir">Browse</button>
+                </div>
+                <div class="dir-info" id="dirInfo">Enter or browse to a folder.</div>
+            </div>
+
+            <div class="field" style="margin-top:16px;">
+                <label>Estimated Disk Usage</label>
+                <div id="diskEstimate" style="font-size:15px;font-weight:600;margin-top:2px;">—</div>
+            </div>
+        </div>
+
+        <!-- Step 2: Configure -->
+        <div class="step-view" id="step-2">
+            <h2 id="configTitle">Configure Server</h2>
+            <p class="subtitle">Set up your server's name, ports, and credentials.</p>
+            <div class="form-grid" id="configForm"></div>
+        </div>
+
+        <!-- Step 3: Review -->
+        <div class="step-view" id="step-3">
+            <h2>Review</h2>
+            <p class="subtitle">Everything looks good? Click Install to begin downloading and setting up your server.</p>
+            <div class="review-table" id="reviewTable"></div>
+        </div>
+
+        <!-- Step 4: Installing -->
+        <div class="step-view" id="step-4">
+            <h2>Installing</h2>
+            <p class="subtitle">Please wait while Ronin Forge downloads and configures your server.</p>
+
+            <div id="installStage">Preparing...</div>
+            <div id="progressMsg">Starting installation...</div>
+            <div class="progress-track">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <div id="installLog"></div>
+        </div>
+
+        <!-- Step 5: Complete -->
+        <div class="step-view" id="step-5">
+            <div class="complete-center">
+                <div class="success-icon">✓</div>
+                <h2>Server Ready!</h2>
+                <p id="completeMsg">Your server has been installed and configured successfully.</p>
+
+                <div class="complete-actions">
+                    <button class="btn btn-primary" id="btnAddToRSM" style="display:none">
+                        Add to Ronin Server Manager
+                    </button>
+                    <button class="btn btn-secondary" id="btnExportJSON">
+                        Export as .json file
+                    </button>
+                    <button class="btn btn-ghost" id="btnOpenFolder">
+                        Open Install Folder
+                    </button>
+                    <button class="btn btn-ghost" id="btnStartOver">
+                        Set Up Another Server
+                    </button>
+                </div>
+
+                <div class="rsm-notice" id="rsmNotice" style="display:none">
+                    RSM not detected. Use "Export as .json" and import it manually, or install
+                    <a href="#" style="color:var(--accent)">Ronin Server Manager</a> first.
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div id="footer">
+            <button class="btn btn-ghost" id="btnBack" disabled>← Back</button>
+            <div style="display:flex;gap:10px;align-items:center;">
+                <span id="footerStatus" style="font-size:12px;color:var(--text-mute)"></span>
+                <button class="btn btn-primary" id="btnNext" disabled>Select a Game</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="configs/games.js"></script>
+<script src="renderer.js"></script>
+</body>
+</html>

@@ -1,0 +1,511 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+    --bg:        #0d1117;
+    --surface:   #161b22;
+    --surface2:  #21262d;
+    --surface3:  #2d333b;
+    --border:    #30363d;
+    --accent:    #7c3aed;
+    --accent-h:  #6d28d9;
+    --accent-s:  rgba(124, 58, 237, 0.15);
+    --text:      #e6edf3;
+    --text-mute: #8b949e;
+    --success:   #2ea043;
+    --error:     #da3633;
+    --warn:      #d29922;
+    --radius:    8px;
+}
+
+body {
+    font-family: -apple-system, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    user-select: none;
+    font-size: 14px;
+}
+
+/* ── Titlebar ─────────────────────────────────────────────────────────────── */
+#titlebar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 40px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    -webkit-app-region: drag;
+    flex-shrink: 0;
+    padding: 0 12px 0 16px;
+}
+
+#titlebar-logo {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 0.03em;
+}
+
+#titlebar-logo .icon {
+    font-size: 16px;
+}
+
+#titlebar-logo .brand { color: var(--accent); }
+
+#titlebar-controls {
+    display: flex;
+    gap: 6px;
+    -webkit-app-region: no-drag;
+}
+
+.tb-btn {
+    width: 28px;
+    height: 28px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-mute);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    transition: background 0.15s, color 0.15s;
+}
+.tb-btn:hover { background: var(--surface2); color: var(--text); }
+.tb-btn.close:hover { background: var(--error); color: #fff; }
+
+/* ── Layout ───────────────────────────────────────────────────────────────── */
+#app {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+}
+
+/* ── Sidebar ──────────────────────────────────────────────────────────────── */
+#sidebar {
+    width: 220px;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    padding: 24px 0;
+    flex-shrink: 0;
+}
+
+.sidebar-label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    color: var(--text-mute);
+    text-transform: uppercase;
+    padding: 0 20px 12px;
+}
+
+.step-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 20px;
+    cursor: default;
+    transition: background 0.15s;
+    border-left: 3px solid transparent;
+}
+
+.step-item.active {
+    background: var(--accent-s);
+    border-left-color: var(--accent);
+}
+
+.step-item.done .step-num { background: var(--success); color: #fff; }
+.step-item.done .step-num::after { content: '✓'; }
+.step-item.done .step-num span { display: none; }
+
+.step-num {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--surface3);
+    color: var(--text-mute);
+    font-size: 11px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: background 0.2s, color 0.2s;
+}
+
+.step-item.active .step-num { background: var(--accent); color: #fff; }
+
+.step-label {
+    font-size: 13px;
+    color: var(--text-mute);
+    font-weight: 500;
+}
+
+.step-item.active .step-label,
+.step-item.done .step-label { color: var(--text); }
+
+/* ── Main content ─────────────────────────────────────────────────────────── */
+#main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.step-view {
+    display: none;
+    flex: 1;
+    overflow-y: auto;
+    padding: 32px 40px;
+}
+.step-view.active { display: flex; flex-direction: column; }
+
+.step-view h2 {
+    font-size: 22px;
+    font-weight: 700;
+    margin-bottom: 6px;
+}
+
+.step-view .subtitle {
+    color: var(--text-mute);
+    margin-bottom: 28px;
+    font-size: 13px;
+}
+
+/* ── Footer ───────────────────────────────────────────────────────────────── */
+#footer {
+    border-top: 1px solid var(--border);
+    padding: 14px 40px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--surface);
+    flex-shrink: 0;
+}
+
+.btn {
+    padding: 8px 20px;
+    border-radius: var(--radius);
+    border: none;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    transition: background 0.15s, opacity 0.15s;
+}
+
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover:not(:disabled) { background: var(--accent-h); }
+
+.btn-secondary {
+    background: var(--surface2);
+    color: var(--text);
+    border: 1px solid var(--border);
+}
+.btn-secondary:hover:not(:disabled) { background: var(--surface3); }
+
+.btn-ghost { background: transparent; color: var(--text-mute); }
+.btn-ghost:hover:not(:disabled) { color: var(--text); background: var(--surface2); }
+
+.btn-danger { background: var(--error); color: #fff; }
+.btn-danger:hover:not(:disabled) { opacity: 0.85; }
+
+/* ── Game selection grid ──────────────────────────────────────────────────── */
+.game-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 14px;
+}
+
+.game-card {
+    background: var(--surface);
+    border: 2px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px 16px;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s, transform 0.1s;
+    text-align: center;
+}
+
+.game-card:hover {
+    border-color: var(--accent);
+    background: var(--surface2);
+    transform: translateY(-2px);
+}
+
+.game-card.selected {
+    border-color: var(--accent);
+    background: var(--accent-s);
+}
+
+.game-card .game-icon {
+    font-size: 36px;
+    margin-bottom: 10px;
+    display: block;
+}
+
+.game-card .game-name {
+    font-weight: 700;
+    font-size: 13px;
+    margin-bottom: 4px;
+}
+
+.game-card .game-desc {
+    font-size: 11px;
+    color: var(--text-mute);
+    line-height: 1.4;
+}
+
+.game-card .disk-badge {
+    display: inline-block;
+    margin-top: 8px;
+    background: var(--surface3);
+    color: var(--text-mute);
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
+/* ── Install dir ──────────────────────────────────────────────────────────── */
+.dir-picker {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.dir-picker input {
+    flex: 1;
+}
+
+.dir-info {
+    font-size: 12px;
+    color: var(--text-mute);
+    padding: 6px 0;
+}
+
+.dir-info.warn { color: var(--warn); }
+.dir-info.ok   { color: var(--success); }
+
+/* ── Form fields ──────────────────────────────────────────────────────────── */
+.form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+}
+
+@media (max-width: 700px) { .form-grid { grid-template-columns: 1fr; } }
+
+.field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.field.full-width { grid-column: 1 / -1; }
+
+.field label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-mute);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.field .hint {
+    font-size: 11px;
+    color: var(--text-mute);
+    margin-top: -2px;
+}
+
+input[type=text],
+input[type=number],
+input[type=password],
+select {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    padding: 8px 12px;
+    font-size: 13px;
+    width: 100%;
+    outline: none;
+    transition: border-color 0.15s;
+}
+
+input:focus, select:focus { border-color: var(--accent); }
+
+select { cursor: pointer; }
+
+select option { background: var(--surface2); }
+
+.path-row {
+    display: flex;
+    gap: 8px;
+}
+
+.path-row input { flex: 1; }
+
+/* ── Progress / install view ──────────────────────────────────────────────── */
+#installStage {
+    font-size: 13px;
+    color: var(--text-mute);
+    margin-bottom: 8px;
+}
+
+#progressMsg {
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 14px;
+}
+
+.progress-track {
+    background: var(--surface2);
+    border-radius: 999px;
+    height: 8px;
+    overflow: hidden;
+    margin-bottom: 20px;
+}
+
+.progress-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 999px;
+    transition: width 0.3s ease;
+    width: 0%;
+}
+
+#installLog {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px;
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 11px;
+    color: var(--text-mute);
+    height: 200px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+/* ── Review panel ─────────────────────────────────────────────────────────── */
+.review-table {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    margin-bottom: 20px;
+}
+
+.review-row {
+    display: flex;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    gap: 16px;
+    align-items: flex-start;
+}
+
+.review-row:last-child { border-bottom: none; }
+
+.review-key {
+    width: 160px;
+    flex-shrink: 0;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-mute);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding-top: 1px;
+}
+
+.review-val {
+    font-size: 13px;
+    word-break: break-all;
+}
+
+/* ── Complete view ─────────────────────────────────────────────────────────── */
+.complete-center {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 16px;
+    padding-top: 20px;
+}
+
+.success-icon {
+    width: 72px;
+    height: 72px;
+    background: rgba(46, 160, 67, 0.15);
+    border: 2px solid var(--success);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 32px;
+    color: var(--success);
+}
+
+.complete-center h2 { font-size: 24px; }
+
+.complete-center p { color: var(--text-mute); max-width: 400px; line-height: 1.6; }
+
+.complete-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: 100%;
+    max-width: 360px;
+    margin-top: 8px;
+}
+
+.complete-actions .btn { width: 100%; padding: 12px; font-size: 14px; }
+
+.rsm-notice {
+    font-size: 12px;
+    color: var(--text-mute);
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px 14px;
+    max-width: 360px;
+    text-align: left;
+    line-height: 1.5;
+}
+
+/* ── Misc ─────────────────────────────────────────────────────────────────── */
+.tag {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    background: var(--accent-s);
+    color: var(--accent);
+    border: 1px solid var(--accent);
+}
+
+.spinner {
+    width: 18px;
+    height: 18px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    display: inline-block;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--surface3); border-radius: 3px; }

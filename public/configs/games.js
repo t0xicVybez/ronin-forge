@@ -1,0 +1,283 @@
+// Game configurations for Ronin Forge
+// Each config defines the form, download method, and RSM entry mapping.
+window.GAMES = [
+    {
+        id: 'minecraft-java',
+        displayName: 'Minecraft Java',
+        description: 'Official Java Edition dedicated server',
+        icon: '⛏',
+        color: '#4CAF50',
+        diskGB: 1,
+        downloadMethod: 'minecraft-vanilla',
+        form: [
+            { id: 'serverName',   label: 'Server Name',       type: 'text',         placeholder: 'My Minecraft Server', required: true },
+            { id: 'mcVersion',    label: 'Minecraft Version',  type: 'select-async', fetchKey: 'minecraft-versions',     required: true },
+            { id: 'javaPath',     label: 'Java Executable',    type: 'file-picker',  placeholder: 'Select java.exe',     required: true,
+              hint: 'Usually in C:\\Program Files\\Java\\...\\bin\\java.exe' },
+            { id: 'ram',          label: 'RAM Allocation',     type: 'select',       options: ['1G','2G','4G','6G','8G','12G','16G'], default: '4G' },
+            { id: 'port',         label: 'Game Port',          type: 'number',       default: 25565, min: 1024, max: 65535 },
+            { id: 'rconPort',     label: 'RCON Port',          type: 'number',       default: 25575, min: 1024, max: 65535 },
+            { id: 'rconPassword', label: 'RCON Password',      type: 'password',     placeholder: 'Set a strong password' },
+            { id: 'maxPlayers',   label: 'Max Players',        type: 'number',       default: 20, min: 1, max: 1000 },
+        ],
+        rsm: {
+            type: 'minecraft',
+            category: 'DIRECT_CONSOLE',
+            playerListCommand: 'list',
+            path: (f, dir) => f.javaPath,
+            workingDir: (f, dir) => dir,
+            args: (f, dir, ir) => `-Xmx${f.ram} -Xms${f.ram} -jar server.jar nogui`,
+            apiPort: (f) => String(f.rconPort || 25575),
+            apiPass: (f) => f.rconPassword || '',
+            logPath: (f, dir) => `${dir}\\logs`,
+        },
+        postInstall: (f, dir) => {
+            // server.properties is written by the installer with defaults;
+            // Apply user's form values on top
+            const mcInstaller = require('../src/minecraft-installer');
+            // Note: postInstall runs in main process context
+        }
+    },
+    {
+        id: 'minecraft-forge',
+        displayName: 'Minecraft Forge',
+        description: 'Modded server — Forge mod loader',
+        icon: '🔨',
+        color: '#FF8C00',
+        diskGB: 3,
+        downloadMethod: 'minecraft-forge',
+        form: [
+            { id: 'serverName',   label: 'Server Name',       type: 'text',         placeholder: 'My Modded Server',    required: true },
+            { id: 'mcVersion',    label: 'Minecraft Version',  type: 'select-async', fetchKey: 'minecraft-versions',     required: true },
+            { id: 'forgeVersion', label: 'Forge Version',      type: 'select-async', fetchKey: 'forge-versions',         required: true,
+              dependsOn: 'mcVersion' },
+            { id: 'javaPath',     label: 'Java Executable',    type: 'file-picker',  placeholder: 'Select java.exe',     required: true },
+            { id: 'ram',          label: 'RAM Allocation',     type: 'select',       options: ['2G','4G','6G','8G','12G','16G'], default: '6G' },
+            { id: 'port',         label: 'Game Port',          type: 'number',       default: 25565 },
+            { id: 'rconPort',     label: 'RCON Port',          type: 'number',       default: 25575 },
+            { id: 'rconPassword', label: 'RCON Password',      type: 'password',     placeholder: 'Set a strong password' },
+            { id: 'maxPlayers',   label: 'Max Players',        type: 'number',       default: 20 },
+        ],
+        rsm: {
+            type: 'minecraft',
+            category: 'DIRECT_CONSOLE',
+            playerListCommand: 'list',
+            path: (f, dir) => f.javaPath,
+            workingDir: (f, dir) => dir,
+            args: (f, dir, ir) => {
+                if (ir && ir.runBat) return `@"${ir.runBat}"`;
+                const jar = (ir && ir.universalJar) || 'forge.jar';
+                return `-Xmx${f.ram} -Xms${f.ram} -jar "${jar}" nogui`;
+            },
+            apiPort: (f) => String(f.rconPort || 25575),
+            apiPass: (f) => f.rconPassword || '',
+            logPath: (f, dir) => `${dir}\\logs`,
+        }
+    },
+    {
+        id: 'minecraft-fabric',
+        displayName: 'Minecraft Fabric',
+        description: 'Modded server — Fabric mod loader',
+        icon: '🧵',
+        color: '#9C59BD',
+        diskGB: 2,
+        downloadMethod: 'minecraft-fabric',
+        form: [
+            { id: 'serverName',   label: 'Server Name',       type: 'text',         placeholder: 'My Fabric Server',    required: true },
+            { id: 'mcVersion',    label: 'Minecraft Version',  type: 'select-async', fetchKey: 'minecraft-versions',     required: true },
+            { id: 'javaPath',     label: 'Java Executable',    type: 'file-picker',  placeholder: 'Select java.exe',     required: true },
+            { id: 'ram',          label: 'RAM Allocation',     type: 'select',       options: ['2G','4G','6G','8G','12G','16G'], default: '4G' },
+            { id: 'port',         label: 'Game Port',          type: 'number',       default: 25565 },
+            { id: 'rconPort',     label: 'RCON Port',          type: 'number',       default: 25575 },
+            { id: 'rconPassword', label: 'RCON Password',      type: 'password',     placeholder: 'Set a strong password' },
+            { id: 'maxPlayers',   label: 'Max Players',        type: 'number',       default: 20 },
+        ],
+        rsm: {
+            type: 'minecraft',
+            category: 'DIRECT_CONSOLE',
+            playerListCommand: 'list',
+            path: (f, dir) => f.javaPath,
+            workingDir: (f, dir) => dir,
+            args: (f, dir, ir) => `-Xmx${f.ram} -Xms${f.ram} -jar fabric-server-launch.jar nogui`,
+            apiPort: (f) => String(f.rconPort || 25575),
+            apiPass: (f) => f.rconPassword || '',
+            logPath: (f, dir) => `${dir}\\logs`,
+        }
+    },
+    {
+        id: 'ark-ase',
+        displayName: 'Ark: Survival Evolved',
+        description: 'Classic Ark server via SteamCMD',
+        icon: '🦕',
+        color: '#8B4513',
+        diskGB: 25,
+        steamAppId: '376030',
+        downloadMethod: 'steamcmd',
+        form: [
+            { id: 'serverName',    label: 'Server Name',      type: 'text',     placeholder: 'My Ark Server',  required: true },
+            { id: 'map',           label: 'Map',              type: 'select',   options: ['TheIsland','ScorchedEarth','Ragnarok','Aberration','Extinction','Valguero','Genesis','CrystalIsles','Genesis2','LostIsland','Fjordur'], default: 'TheIsland' },
+            { id: 'serverPass',    label: 'Server Password',  type: 'password', placeholder: 'Leave blank for no password' },
+            { id: 'adminPassword', label: 'Admin Password',   type: 'password', placeholder: 'Required',        required: true },
+            { id: 'maxPlayers',    label: 'Max Players',      type: 'number',   default: 70, min: 1, max: 255 },
+            { id: 'port',          label: 'Game Port',        type: 'number',   default: 7777 },
+            { id: 'queryPort',     label: 'Query Port',       type: 'number',   default: 27015 },
+            { id: 'rconPort',      label: 'RCON Port',        type: 'number',   default: 27020 },
+        ],
+        rsm: {
+            type: 'ark',
+            category: 'POWERSHELL_BRIDGE',
+            playerListCommand: 'ListPlayers',
+            path: (f, dir) => `${dir}\\ShooterGame\\Binaries\\Win64\\ShooterGameServer.exe`,
+            workingDir: (f, dir) => dir,
+            args: (f, dir) => `${f.map}?listen?SessionName=${f.serverName}?MaxPlayers=${f.maxPlayers}?ServerPassword=${f.serverPass || ''}?ServerAdminPassword=${f.adminPassword} -server -log -Port=${f.port || 7777} -QueryPort=${f.queryPort || 27015}`,
+            apiPort: (f) => String(f.rconPort || 27020),
+            apiPass: (f) => f.adminPassword || '',
+            logPath: (f, dir) => `${dir}\\ShooterGame\\Saved\\Logs`,
+        }
+    },
+    {
+        id: 'ark-asa',
+        displayName: 'Ark: Survival Ascended',
+        description: 'Next-gen Ark server via SteamCMD',
+        icon: '🦖',
+        color: '#2E8B57',
+        diskGB: 60,
+        steamAppId: '2430930',
+        downloadMethod: 'steamcmd',
+        form: [
+            { id: 'serverName',    label: 'Server Name',      type: 'text',     placeholder: 'My ASA Server', required: true },
+            { id: 'map',           label: 'Map',              type: 'select',   options: ['TheIsland_WP','ScorchedEarth_WP','Aberration_WP'], default: 'TheIsland_WP' },
+            { id: 'serverPass',    label: 'Server Password',  type: 'password', placeholder: 'Leave blank for no password' },
+            { id: 'adminPassword', label: 'Admin Password',   type: 'password', placeholder: 'Required', required: true },
+            { id: 'maxPlayers',    label: 'Max Players',      type: 'number',   default: 70 },
+            { id: 'port',          label: 'Game Port',        type: 'number',   default: 7777 },
+            { id: 'rconPort',      label: 'RCON Port',        type: 'number',   default: 27020 },
+        ],
+        rsm: {
+            type: 'ark',
+            category: 'POWERSHELL_BRIDGE',
+            playerListCommand: 'ListPlayers',
+            path: (f, dir) => `${dir}\\ShooterGame\\Binaries\\Win64\\ArkAscendedServer.exe`,
+            workingDir: (f, dir) => dir,
+            args: (f, dir) => `${f.map}?listen?SessionName=${f.serverName}?MaxPlayers=${f.maxPlayers}?ServerPassword=${f.serverPass || ''}?ServerAdminPassword=${f.adminPassword} -server -log -Port=${f.port || 7777}`,
+            apiPort: (f) => String(f.rconPort || 27020),
+            apiPass: (f) => f.adminPassword || '',
+            logPath: (f, dir) => `${dir}\\ShooterGame\\Saved\\Logs`,
+        }
+    },
+    {
+        id: 'space-engineers',
+        displayName: 'Space Engineers',
+        description: 'Dedicated server via SteamCMD',
+        icon: '🚀',
+        color: '#1565C0',
+        diskGB: 15,
+        steamAppId: '298740',
+        downloadMethod: 'steamcmd',
+        form: [
+            { id: 'serverName', label: 'Server Name', type: 'text',   placeholder: 'My Space Engineers Server', required: true },
+            { id: 'maxPlayers', label: 'Max Players', type: 'number', default: 16, min: 1, max: 32 },
+            { id: 'port',       label: 'Game Port',   type: 'number', default: 27016 },
+        ],
+        rsm: {
+            type: 'space-engineers',
+            category: 'POWERSHELL_BRIDGE',
+            playerListCommand: null,
+            path: (f, dir) => `${dir}\\DedicatedServer\\DedicatedServer64.exe`,
+            workingDir: (f, dir) => `${dir}\\DedicatedServer`,
+            args: (f, dir) => `-console -ignorelastsession`,
+            apiPort: (f) => String(f.port || 27016),
+            apiPass: (f) => '',
+            logPath: (f, dir) => `${dir}\\DedicatedServer\\Logs`,
+        }
+    },
+    {
+        id: 'terraria',
+        displayName: 'Terraria',
+        description: '2D sandbox server via SteamCMD',
+        icon: '⚔',
+        color: '#795548',
+        diskGB: 1,
+        steamAppId: '105600',
+        downloadMethod: 'steamcmd',
+        form: [
+            { id: 'serverName',  label: 'Server Name',    type: 'text',     placeholder: 'My Terraria Server', required: true },
+            { id: 'worldName',   label: 'World Name',     type: 'text',     placeholder: 'World',              required: true },
+            { id: 'port',        label: 'Port',           type: 'number',   default: 7777 },
+            { id: 'maxPlayers',  label: 'Max Players',    type: 'number',   default: 8, min: 1, max: 255 },
+            { id: 'serverPass',  label: 'Server Password', type: 'password', placeholder: 'Leave blank for no password' },
+            { id: 'difficulty',  label: 'Difficulty',     type: 'select',   options: ['0 (Classic)','1 (Expert)','2 (Master)'], default: '0 (Classic)' },
+        ],
+        rsm: {
+            type: 'terraria',
+            category: 'DIRECT_CONSOLE',
+            playerListCommand: null,
+            path: (f, dir) => `${dir}\\TerrariaServer.exe`,
+            workingDir: (f, dir) => dir,
+            args: (f, dir) => {
+                const diff = parseInt(f.difficulty) || 0;
+                const worldPath = `${dir}\\Worlds\\${f.worldName || 'World'}.wld`;
+                let a = `-port ${f.port || 7777} -players ${f.maxPlayers || 8} -world "${worldPath}"`;
+                if (f.serverPass) a += ` -password "${f.serverPass}"`;
+                return a;
+            },
+            apiPort: (f) => '',
+            apiPass: (f) => '',
+            logPath: (f, dir) => '',
+        }
+    },
+    {
+        id: 'fivem',
+        displayName: 'FiveM',
+        description: 'GTA V multiplayer server (cfx.re)',
+        icon: '🏎',
+        color: '#F5A623',
+        diskGB: 3,
+        downloadMethod: 'fivem',
+        form: [
+            { id: 'serverName',  label: 'Server Name',   type: 'text',   placeholder: 'My FiveM Server', required: true },
+            { id: 'licenseKey',  label: 'License Key',   type: 'text',   placeholder: 'From keymaster.fivem.net', required: true,
+              hint: 'Get your free license key at https://keymaster.fivem.net' },
+            { id: 'port',        label: 'Server Port',   type: 'number', default: 30120 },
+            { id: 'maxClients',  label: 'Max Clients',   type: 'number', default: 32, min: 1, max: 1024 },
+        ],
+        rsm: {
+            type: 'fivem',
+            category: 'DIRECT_CONSOLE',
+            playerListCommand: null,
+            path: (f, dir) => `${dir}\\FXServer.exe`,
+            workingDir: (f, dir) => dir,
+            args: (f, dir) => `+exec server-data\\server.cfg`,
+            apiPort: (f) => String(f.port || 30120),
+            apiPass: (f) => '',
+            logPath: (f, dir) => '',
+        }
+    },
+    {
+        id: 'redm',
+        displayName: 'RedM',
+        description: 'RDR2 multiplayer server (cfx.re)',
+        icon: '🤠',
+        color: '#8B0000',
+        diskGB: 3,
+        downloadMethod: 'redm',
+        form: [
+            { id: 'serverName',  label: 'Server Name',   type: 'text',   placeholder: 'My RedM Server', required: true },
+            { id: 'licenseKey',  label: 'License Key',   type: 'text',   placeholder: 'From keymaster.fivem.net', required: true,
+              hint: 'Get your free license key at https://keymaster.fivem.net' },
+            { id: 'port',        label: 'Server Port',   type: 'number', default: 30120 },
+            { id: 'maxClients',  label: 'Max Clients',   type: 'number', default: 32 },
+        ],
+        rsm: {
+            type: 'redm',
+            category: 'DIRECT_CONSOLE',
+            playerListCommand: null,
+            path: (f, dir) => `${dir}\\FXServer.exe`,
+            workingDir: (f, dir) => dir,
+            args: (f, dir) => `+exec server-data\\server.cfg`,
+            apiPort: (f) => String(f.port || 30120),
+            apiPass: (f) => '',
+            logPath: (f, dir) => '',
+        }
+    },
+];
