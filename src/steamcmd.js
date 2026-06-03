@@ -56,23 +56,21 @@ function runSteamCMD(args, signal, onLine) {
     });
 }
 
-// ── Progress helpers ──────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-function getDirBytes(dir, depth = 3) {
-    let total = 0;
+// Parse BytesDownloaded / BytesToDownload from a SteamCMD appmanifest .acf file.
+// SteamCMD updates this file in real-time as chunks are downloaded, making it
+// the most reliable progress source regardless of where chunks are staged.
+function readACF(acfPath) {
     try {
-        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-            try {
-                const full = path.join(dir, entry.name);
-                if (entry.isFile()) {
-                    total += fs.statSync(full).size;
-                } else if (entry.isDirectory() && depth > 0) {
-                    total += getDirBytes(full, depth - 1);
-                }
-            } catch {}
-        }
-    } catch {}
-    return total;
+        const content  = fs.readFileSync(acfPath, 'utf8');
+        const toMatch  = content.match(/"BytesToDownload"\s+"(\d+)"/);
+        const doneMatch = content.match(/"BytesDownloaded"\s+"(\d+)"/);
+        if (!toMatch || !doneMatch) return null;
+        const total = parseInt(toMatch[1]);
+        const done  = parseInt(doneMatch[1]);
+        return total > 0 ? { total, done } : null;
+    } catch { return null; }
 }
 
 function formatSpeed(bps) {
@@ -88,7 +86,7 @@ function formatETA(sec) {
     return `${Math.floor(sec / 3600)}h ${Math.floor((sec % 3600) / 60)}m left`;
 }
 
-// ── State-code labels ─────────────────────────────────────────────────────────
+// ── State-code label table ────────────────────────────────────────────────────
 
 const STATE_LABELS = {
     '0x3':   'Reconfiguring',
@@ -100,9 +98,9 @@ const STATE_LABELS = {
     '0x5':   'Validating',
 };
 
-// Connection-phase strings SteamCMD may print to stdout before state codes.
-// On Windows, SteamCMD often uses WriteConsoleW (bypasses stdout) when it
-// detects no real TTY — these may or may not arrive.
+// Connection-phase strings SteamCMD may print before download begins.
+// On Windows, WriteConsoleW bypasses stdout when no real TTY is attached,
+// so these may or may not arrive — the ACF poller works regardless.
 const CONNECT_MESSAGES = [
     { match: 'Loading Steam API',      pct: 3,  msg: 'Loading Steam API...' },
     { match: 'Connecting anonymously', pct: 6,  msg: 'Connecting to Steam...' },
@@ -113,7 +111,7 @@ const CONNECT_MESSAGES = [
 
 // ── Installer ─────────────────────────────────────────────────────────────────
 
-async function installApp(appId, installDir, onProgress, onLog, signal, expectedGB = 0) {
+async function installApp(appId, installDir, onProgress, onLog, signal) {
     await ensureSteamCMD(onProgress);
 
     fs.mkdirSync(installDir, { recursive: true });
@@ -129,12 +127,12 @@ async function installApp(appId, installDir, onProgress, onLog, signal, expected
     let lastPct         = 0;
     let stalledTimer    = null;
     let downloading     = false;
-    let stateCodeActive = false; // true once SteamCMD stdout gives real %
+    let stateCodeActive = false;
     let lastMsg         = 'Starting Steam...';
 
-    // ── Elapsed-time counter ────────────────────────────────────────────────
-    // Updates the status label every second so the UI never looks frozen,
-    // even when SteamCMD emits nothing via stdout.
+    // ── Elapsed-time counter ─────────────────────────────────────────────────
+    // Updates the status label every second in the connect phase so the UI
+    // always shows movement even when SteamCMD emits nothing via stdout.
     let elapsedSec = 0;
     const elapsedTimer = setInterval(() => {
         elapsedSec++;
@@ -145,63 +143,58 @@ async function installApp(appId, installDir, onProgress, onLog, signal, expected
         onProgress('connect', 20, `${lastMsg} (${t})`);
     }, 1000);
 
-    // ── Directory-scan progress ─────────────────────────────────────────────
-    // Measures bytes written to installDir directly — more reliable than
-    // statfs on Windows (which caches disk-usage figures aggressively).
-    // SteamCMD writes game files to installDir progressively as chunks
-    // are verified, so the size grows in step with actual download progress.
-    let diskTimer   = null;
-    let prevBytes   = 0;
-    let prevTime    = Date.now();
+    // ── ACF-based progress polling ───────────────────────────────────────────
+    // SteamCMD writes {installDir}/steamapps/appmanifest_{appId}.acf and
+    // updates BytesDownloaded inside it as each chunk is confirmed. This gives
+    // exact byte-level progress without needing stdout state codes or dir scans.
+    // A secondary path inside STEAMCMD_DIR covers edge-case install layouts.
+    const acfPaths = [
+        path.join(installDir, 'steamapps', `appmanifest_${appId}.acf`),
+        path.join(STEAMCMD_DIR, 'steamapps', `appmanifest_${appId}.acf`),
+    ];
+
+    let prevDone     = 0;
+    let prevTime     = Date.now();
     let lastSpeedBps = 0;
-    const expectedBytes = expectedGB * 1024 * 1024 * 1024;
 
-    // SteamCMD stages chunks in steamapps/downloading/ before committing
-    // to installDir, so we scan both and take whichever is larger.
-    const stagingDir = path.join(STEAMCMD_DIR, 'steamapps', 'downloading');
+    const diskTimer = setInterval(() => {
+        if (stateCodeActive) return; // stdout state codes are more granular
 
-    if (expectedGB > 0) {
-        diskTimer = setInterval(() => {
-            if (stateCodeActive) return; // stdout progress is more accurate
+        let acf = null;
+        for (const p of acfPaths) {
+            acf = readACF(p);
+            if (acf) break;
+        }
+        if (!acf || acf.done <= 0) return;
 
-            const inInstall  = getDirBytes(installDir);
-            const inStaging  = getDirBytes(stagingDir, 2);
-            const currentBytes = Math.max(inInstall, inStaging);
-            const now          = Date.now();
-            const elapsedMs    = now - prevTime;
-            const byteDelta    = currentBytes - prevBytes;
+        downloading = true;
+        const now     = Date.now();
+        const delta   = acf.done - prevDone;
+        const elapsed = now - prevTime;
 
-            if (currentBytes > 25 * 1024 * 1024) { // > 25 MB present in dir
-                downloading = true;
+        if (delta > 0 && elapsed > 0) lastSpeedBps = (delta / elapsed) * 1000;
+        prevDone = acf.done;
+        prevTime = now;
 
-                const rawPct = Math.min(95, Math.round((currentBytes / expectedBytes) * 100));
-                // Cap single-poll jump to 20 % to guard against anomalies
-                const reportPct = Math.min(lastPct + 20, rawPct);
+        const pct = Math.min(95, Math.round((acf.done / acf.total) * 100));
+        if (pct <= lastPct) return; // never go backwards
 
-                if (byteDelta > 0) lastSpeedBps = (byteDelta / elapsedMs) * 1000;
-                const remaining = Math.max(0, expectedBytes - currentBytes);
-                const etaSec    = lastSpeedBps > 0 ? Math.round(remaining / lastSpeedBps) : 0;
+        lastPct = pct;
+        const remaining = acf.total - acf.done;
+        const etaSec    = lastSpeedBps > 0 ? Math.round(remaining / lastSpeedBps) : 0;
 
-                let msg = `Downloading... ~${reportPct}%`;
-                if (lastSpeedBps > 0)          msg += ` · ${formatSpeed(lastSpeedBps)}`;
-                if (etaSec > 60 && reportPct < 94) msg += ` · ${formatETA(etaSec)}`;
+        let msg = `Downloading... ${pct}%`;
+        if (lastSpeedBps > 0)         msg += ` · ${formatSpeed(lastSpeedBps)}`;
+        if (etaSec > 60 && pct < 94) msg += ` · ${formatETA(etaSec)}`;
 
-                if (reportPct > lastPct) {
-                    lastPct = reportPct;
-                    onProgress('download', reportPct, msg);
-                }
-            }
+        onProgress('download', pct, msg);
+    }, 3000);
 
-            prevBytes = currentBytes;
-            prevTime  = now;
-        }, 5000);
-    }
-
-    // ── SteamCMD output parsing ─────────────────────────────────────────────
+    // ── SteamCMD stdout parsing ──────────────────────────────────────────────
     await runSteamCMD(args, signal, (text) => {
         if (onLog) onLog(text);
 
-        // Connection-phase messages
+        // Connection phase
         if (!downloading) {
             for (const { match, pct, msg } of CONNECT_MESSAGES) {
                 if (text.includes(match)) {
@@ -212,7 +205,7 @@ async function installApp(appId, installDir, onProgress, onLog, signal, expected
             }
         }
 
-        // State-code lines: "Update state (0x61) downloading, progress: 58.32 (...)"
+        // "Update state (0x61) downloading, progress: 58.32 (1234 / 5678)"
         const stateMatch = text.match(/Update state \((0x[\da-f]+)\)\s+([^,\n]+)/i);
         const pctMatch   = text.match(/progress:\s+([\d.]+)/);
         if (!stateMatch) return;
@@ -225,14 +218,13 @@ async function installApp(appId, installDir, onProgress, onLog, signal, expected
 
             if (pct === 0) {
                 lastMsg = `${label}...`;
-                // Once downloading has started, stay in download stage so
-                // the final Reconfiguring/Committing pass doesn't flip back
-                // to the animated connect shimmer.
+                // Once downloading, stay in download stage — the final
+                // Reconfiguring/Committing pass also reports 0% and must not
+                // flip the bar back to the animated connect shimmer.
                 onProgress(downloading ? 'download' : 'connect', lastPct, `${label}...`);
                 return;
             }
 
-            // Real SteamCMD percentage received — disable dir-scan fallback
             stateCodeActive = true;
             downloading = true;
             const isRetry = pct < lastPct;
@@ -250,7 +242,7 @@ async function installApp(appId, installDir, onProgress, onLog, signal, expected
     });
 
     clearInterval(elapsedTimer);
-    if (diskTimer)   clearInterval(diskTimer);
+    clearInterval(diskTimer);
     if (stalledTimer) clearTimeout(stalledTimer);
     onProgress('download', 100, 'Download complete');
 }

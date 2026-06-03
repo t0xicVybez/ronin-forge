@@ -259,63 +259,63 @@ async function performInstall(gameId, installDir, formData, onProgress, onLog, s
             return mc.installFabric(formData.mcVersion, installDir, formData.javaPath, onProgress, signal);
 
         case 'ark-ase':
-            await steam.installApp('376030', installDir, onProgress, onLog, signal, diskGB);
+            await steam.installApp('376030', installDir, onProgress, onLog, signal);
             return { configNote: {
                 message: 'Start your server once to generate its config, then shut it down and edit your settings in:',
                 path: path.join(installDir, 'ShooterGame', 'Saved', 'Config', 'WindowsServer', 'GameUserSettings.ini'),
             }};
 
         case 'ark-asa':
-            await steam.installApp('2430930', installDir, onProgress, onLog, signal, diskGB);
+            await steam.installApp('2430930', installDir, onProgress, onLog, signal);
             return { configNote: {
                 message: 'Start your server once to generate its config, then shut it down and edit your settings in:',
                 path: path.join(installDir, 'ShooterGame', 'Saved', 'Config', 'WindowsServer', 'GameUserSettings.ini'),
             }};
 
         case 'space-engineers':
-            await steam.installApp('298740', installDir, onProgress, onLog, signal, diskGB);
+            await steam.installApp('298740', installDir, onProgress, onLog, signal);
             return { configNote: {
                 message: 'Start your server once to generate its config, then shut it down and edit your settings in:',
                 path: path.join(installDir, 'Instance', 'SpaceEngineers-Dedicated.cfg'),
             }};
 
         case 'terraria':
-            await steam.installApp('105600', installDir, onProgress, onLog, signal, diskGB);
+            await steam.installApp('105600', installDir, onProgress, onLog, signal);
             return {};
 
         case 'valheim':
-            await steam.installApp('896660', installDir, onProgress, onLog, signal, diskGB);
+            await steam.installApp('896660', installDir, onProgress, onLog, signal);
             return {};
 
         case 'rust':
-            await steam.installApp('258550', installDir, onProgress, onLog, signal, diskGB);
+            await steam.installApp('258550', installDir, onProgress, onLog, signal);
             return {};
 
         case 'project-zomboid':
-            await steam.installApp('108600', installDir, onProgress, onLog, signal, diskGB);
+            await steam.installApp('108600', installDir, onProgress, onLog, signal);
             return {};
 
         case '7-days-to-die':
-            await steam.installApp('294420', installDir, onProgress, onLog, signal, diskGB);
+            await steam.installApp('294420', installDir, onProgress, onLog, signal);
             return {};
 
         case 'conan-exiles':
-            await steam.installApp('443030', installDir, onProgress, onLog, signal, diskGB);
+            await steam.installApp('443030', installDir, onProgress, onLog, signal);
             return { configNote: {
                 message: 'Start your server once to generate its config files, then shut it down and edit your settings in:',
                 path: path.join(installDir, 'ConanSandbox', 'Saved', 'Config', 'WindowsServer'),
             }};
 
         case 'palworld':
-            await steam.installApp('2394010', installDir, onProgress, onLog, signal, diskGB);
+            await steam.installApp('2394010', installDir, onProgress, onLog, signal);
             return {};
 
         case 'v-rising':
-            await steam.installApp('1829350', installDir, onProgress, onLog, signal, diskGB);
+            await steam.installApp('1829350', installDir, onProgress, onLog, signal);
             return {};
 
         case 'satisfactory':
-            await steam.installApp('1690800', installDir, onProgress, onLog, signal, diskGB);
+            await steam.installApp('1690800', installDir, onProgress, onLog, signal);
             return {};
 
         default:
