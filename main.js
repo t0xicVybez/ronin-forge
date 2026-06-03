@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Notification } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -100,6 +100,62 @@ ipcMain.handle('check-disk-space', async (_, { installDir, requiredGB }) => {
     }
 });
 
+// ── Port conflict check ───────────────────────────────────────────────────────
+ipcMain.handle('check-port', async (_, { port }) => {
+    const net   = require('net');
+    const dgram = require('dgram');
+
+    const checkTCP = () => new Promise((resolve) => {
+        const srv = net.createServer();
+        srv.unref();
+        srv.on('error', () => resolve(true));
+        srv.listen({ port, host: '0.0.0.0' }, () => srv.close(() => resolve(false)));
+    });
+
+    const checkUDP = () => new Promise((resolve) => {
+        const sock = dgram.createSocket('udp4');
+        sock.on('error', () => resolve(true));
+        sock.bind(port, '0.0.0.0', () => sock.close(() => resolve(false)));
+    });
+
+    const [tcp, udp] = await Promise.all([checkTCP(), checkUDP()]);
+    return { inUse: tcp || udp };
+});
+
+// ── Java version validation ───────────────────────────────────────────────────
+ipcMain.handle('validate-java', async (_, { javaPath, mcVersion }) => {
+    try {
+        const { spawnSync } = require('child_process');
+        const result = spawnSync(`"${javaPath}"`, ['-version'], {
+            shell: true, encoding: 'utf8', timeout: 5000,
+        });
+        const output = result.stderr || result.stdout || '';
+        const match  = output.match(/version "(\d+)(?:\.(\d+))?/);
+        if (!match) return { valid: false, error: 'Could not read Java version' };
+
+        const first  = parseInt(match[1]);
+        const actual = first === 1 ? parseInt(match[2] || '0') : first;
+        const needed = getRequiredJava(mcVersion);
+        return {
+            valid: actual >= needed,
+            actual,
+            needed,
+            error: actual < needed ? `Java ${needed}+ required for this MC version, found Java ${actual}` : null,
+        };
+    } catch (e) {
+        return { valid: false, error: e.message };
+    }
+});
+
+function getRequiredJava(mcVersion) {
+    const parts = (mcVersion || '').split('.').map(Number);
+    const minor = parts[1] || 0;
+    const patch = parts[2] || 0;
+    if (minor > 20 || (minor === 20 && patch >= 5)) return 21;
+    if (minor >= 17) return 17;
+    return 8;
+}
+
 // ── Java detection ───────────────────────────────────────────────────────────
 ipcMain.handle('find-java', async () => {
     const { execSync } = require('child_process');
@@ -133,7 +189,7 @@ ipcMain.handle('find-java', async () => {
 });
 
 // ── Installation ─────────────────────────────────────────────────────────────
-ipcMain.handle('start-install', async (event, { gameId, installDir, formData, diskGB }) => {
+ipcMain.handle('start-install', async (event, { gameId, installDir, formData, diskGB, gameName, mrpackSource }) => {
     currentAbort = new AbortController();
     const signal = currentAbort.signal;
 
@@ -152,8 +208,23 @@ ipcMain.handle('start-install', async (event, { gameId, installDir, formData, di
     try {
         const result = await performInstall(gameId, installDir, formData, progress, log, signal, diskGB || 0);
 
-        // Write game-specific config files
         await writeGameConfig(gameId, installDir, formData, result);
+
+        // Optional modpack install (Forge / Fabric only)
+        if (mrpackSource) {
+            const mods = require('./src/modpack-installer');
+            await mods.installModpack(mrpackSource, installDir, (pct, msg) => {
+                progress('mods', pct, msg);
+            }, signal);
+        }
+
+        // Toast notification
+        if (Notification.isSupported()) {
+            new Notification({
+                title: 'Ronin Forge',
+                body: `${gameName || 'Server'} is ready!`,
+            }).show();
+        }
 
         return { success: true, installerResult: result };
     } catch (err) {

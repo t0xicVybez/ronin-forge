@@ -41,6 +41,7 @@ window.GAMES = [
     {
         id: 'minecraft-forge',
         displayName: 'Minecraft Forge',
+        hasMods: true,
         description: 'Modded server — Forge mod loader',
         icon: '🔨',
         color: '#FF8C00',
@@ -77,6 +78,7 @@ window.GAMES = [
     {
         id: 'minecraft-fabric',
         displayName: 'Minecraft Fabric',
+        hasMods: true,
         description: 'Modded server — Fabric mod loader',
         icon: '🧵',
         color: '#9C59BD',

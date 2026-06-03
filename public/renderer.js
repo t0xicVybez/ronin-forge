@@ -7,6 +7,7 @@ let installDir = '';
 let formData = {};
 let installerResult = {};
 let rsmAvailable = false;
+let mrpackSource = ''; // set by the modpack modal, cleared on start-over
 
 const STEPS = ['step-0','step-1','step-2','step-3','step-4','step-5'];
 
@@ -103,8 +104,13 @@ function stepNextConfig() {
             action: () => {
                 if (!validateForm()) return;
                 collectFormData();
-                buildReview();
-                gotoStep(3);
+                if (selectedGame.hasMods) {
+                    showModpackModal();
+                } else {
+                    mrpackSource = '';
+                    buildReview();
+                    gotoStep(3);
+                }
             },
         };
         case 3: return {
@@ -247,7 +253,27 @@ function buildConfigForm() {
 async function autoDetectJava() {
     const javas = await api.invoke('find-java');
     const el = document.getElementById('f-javaPath');
-    if (el && !el.value && javas.length > 0) el.value = javas[0];
+    if (el && !el.value && javas.length > 0) {
+        el.value = javas[0];
+        validateJavaVersion();
+    }
+}
+
+async function validateJavaVersion() {
+    const javaEl = document.getElementById('f-javaPath');
+    const mcEl   = document.getElementById('f-mcVersion');
+    if (!javaEl?.value || !mcEl?.value) return;
+
+    const res  = await api.invoke('validate-java', { javaPath: javaEl.value, mcVersion: mcEl.value });
+    const hint = document.querySelector('#field-wrapper-javaPath .hint');
+
+    if (res.valid) {
+        javaEl.style.borderColor = 'var(--success)';
+        if (hint) { hint.textContent = `Java ${res.actual} detected ✓`; hint.style.color = 'var(--success)'; }
+    } else {
+        javaEl.style.borderColor = 'var(--error)';
+        if (hint) { hint.textContent = res.error; hint.style.color = 'var(--error)'; }
+    }
 }
 
 async function loadAsyncOptions(field) {
@@ -261,10 +287,11 @@ async function loadAsyncOptions(field) {
             const versions = await api.invoke('get-minecraft-versions');
             options = versions.map(v => ({ value: v, label: v }));
 
-            // When MC version changes, reload dependent forge versions
+            // When MC version changes, reload dependent forge versions and re-validate Java
             if (selectedGame.id === 'minecraft-forge') {
                 sel.addEventListener('change', () => loadForgeVersions(sel.value));
             }
+            sel.addEventListener('change', validateJavaVersion);
         } else if (field.fetchKey === 'forge-versions') {
             // Populated when MC version changes
             options = [{ value: '', label: 'Select Minecraft version first' }];
@@ -289,15 +316,19 @@ async function loadForgeVersions(mcVersion) {
 }
 
 async function pickFile(fieldId) {
-    const file = await api.invoke('select-file', {
-        title: 'Select Java Executable',
-        filters: [{ name: 'Executable', extensions: ['exe'] }]
-    });
+    const filters = fieldId === 'mrpackInput'
+        ? [{ name: 'Modrinth Pack', extensions: ['mrpack'] }]
+        : [{ name: 'Executable', extensions: ['exe'] }];
+
+    const file = await api.invoke('select-file', { title: 'Select File', filters });
     if (file) {
         const el = document.getElementById(`f-${fieldId}`);
         if (el) el.value = file;
+        if (fieldId === 'javaPath') validateJavaVersion();
     }
 }
+
+function browseMrpack() { pickFile('mrpackInput'); }
 
 function validateForm() {
     let ok = true;
@@ -336,20 +367,60 @@ function buildReview() {
         ['Disk Required',    `~${selectedGame.diskGB} GB`],
     ];
 
-    // Add relevant form fields to review
     selectedGame.form.forEach(f => {
-        if (['serverName'].includes(f.id)) return; // already shown
+        if (['serverName'].includes(f.id)) return;
         const val = formData[f.id];
         if (!val) return;
-        const display = f.type === 'password' ? '••••••••' : val;
-        rows.push([f.label, display]);
+        rows.push([f.label, f.type === 'password' ? '••••••••' : val]);
     });
+
+    if (mrpackSource) rows.push(['Modpack', mrpackSource.split(/[\\/]/).pop()]);
 
     table.innerHTML = rows.map(([k, v]) => `
         <div class="review-row">
             <div class="review-key">${k}</div>
             <div class="review-val">${v}</div>
         </div>`).join('');
+
+    // Large-game warning (10 GB+)
+    const warningEl = document.getElementById('largeGameWarning');
+    const msgEl     = document.getElementById('largeGameMsg');
+    if (selectedGame.diskGB >= 10) {
+        const range = estimateDownloadRange(selectedGame.diskGB);
+        msgEl.textContent = `~${selectedGame.diskGB} GB download — expect ${range} depending on your connection. Keep this window open until complete.`;
+        warningEl.style.display = 'flex';
+    } else {
+        warningEl.style.display = 'none';
+    }
+}
+
+function estimateDownloadRange(gb) {
+    const bytes = gb * 1024 * 1024 * 1024;
+    const fast  = bytes / (100 * 1024 * 1024 / 8); // 100 Mbps
+    const slow  = bytes / (10  * 1024 * 1024 / 8); // 10 Mbps
+    const fmt   = (sec) => sec < 3600 ? `${Math.round(sec / 60)} min` : `${(sec / 3600).toFixed(1)} hr`;
+    return `${fmt(fast)} – ${fmt(slow)}`;
+}
+
+// ── Modpack modal ───────────────────────────────────────────────────────────
+function showModpackModal() {
+    const modal   = document.getElementById('modpackModal');
+    const input   = document.getElementById('mrpackInput');
+    const skipBtn = document.getElementById('btnSkipMods');
+    const contBtn = document.getElementById('btnContinueMods');
+
+    input.value   = mrpackSource; // restore previous selection if user went back
+    modal.style.display = 'flex';
+
+    const close = (source) => {
+        modal.style.display = 'none';
+        mrpackSource = source;
+        buildReview();
+        gotoStep(3);
+    };
+
+    skipBtn.onclick = () => close('');
+    contBtn.onclick = () => close(input.value.trim());
 }
 
 // ── Step 4: Install ────────────────────────────────────────────────────────
@@ -384,24 +455,38 @@ function setupInstallProgress() {
 }
 
 async function startInstall() {
-    const spaceCheck = await api.invoke('check-disk-space', {
-        installDir,
-        requiredGB: selectedGame.diskGB,
-    });
+    const statusEl = document.getElementById('footerStatus');
+
+    // Disk space check
+    const spaceCheck = await api.invoke('check-disk-space', { installDir, requiredGB: selectedGame.diskGB });
     if (!spaceCheck.sufficient && spaceCheck.freeGB !== null) {
-        document.getElementById('footerStatus').textContent =
-            `Not enough disk space — need ~${selectedGame.diskGB} GB, only ${spaceCheck.freeGB.toFixed(1)} GB free.`;
+        statusEl.textContent = `Not enough disk space — need ~${selectedGame.diskGB} GB, only ${spaceCheck.freeGB.toFixed(1)} GB free.`;
         return;
     }
+
+    // Port conflict check
+    const portFields = selectedGame.form.filter(f => f.id === 'port' || f.id === 'rconPort');
+    for (const field of portFields) {
+        const port = parseInt(formData[field.id]);
+        if (!port) continue;
+        const check = await api.invoke('check-port', { port });
+        if (check.inUse) {
+            statusEl.textContent = `Port ${port} (${field.label}) is already in use — go back and change it.`;
+            return;
+        }
+    }
+    statusEl.textContent = '';
 
     gotoStep(4);
     document.getElementById('installLog').textContent = '';
 
     const result = await api.invoke('start-install', {
-        gameId:   selectedGame.id,
+        gameId:      selectedGame.id,
         installDir,
         formData,
-        diskGB:   selectedGame.diskGB,
+        diskGB:      selectedGame.diskGB,
+        gameName:    selectedGame.displayName,
+        mrpackSource: mrpackSource || null,
     });
 
     if (result.cancelled) {
@@ -477,10 +562,11 @@ function showComplete() {
     openBtn.onclick = () => api.invoke('open-folder', installDir);
 
     startBtn.onclick = () => {
-        selectedGame = null;
-        installDir   = '';
-        formData     = {};
+        selectedGame  = null;
+        installDir    = '';
+        formData      = {};
         installerResult = {};
+        mrpackSource  = '';
         document.querySelectorAll('.game-card').forEach(c => c.classList.remove('selected'));
         document.getElementById('installDir').value = '';
         document.getElementById('progressFill').style.width = '0%';

@@ -97,6 +97,13 @@
             <h2>Review</h2>
             <p class="subtitle">Everything looks good? Click Install to begin downloading and setting up your server.</p>
             <div class="review-table" id="reviewTable"></div>
+            <div class="large-game-warning" id="largeGameWarning" style="display:none">
+                <span class="large-game-warning-icon">⏱</span>
+                <div>
+                    <strong>Large download</strong>
+                    <p id="largeGameMsg"></p>
+                </div>
+            </div>
         </div>
 
         <!-- Step 4: Installing -->
@@ -143,6 +150,26 @@
                 <div class="rsm-notice" id="rsmNotice" style="display:none">
                     RSM not detected. Use "Export as .json" and import it manually, or install
                     <a href="#" style="color:var(--accent)">Ronin Server Manager</a> first.
+                </div>
+            </div>
+        </div>
+
+        <!-- Modpack modal (Forge / Fabric only) -->
+        <div id="modpackModal" class="modal-overlay" style="display:none">
+            <div class="modal">
+                <h3>Add a Modpack <span class="tag">Optional</span></h3>
+                <p class="modal-subtitle">Install a Modrinth modpack (.mrpack) to automatically populate your mods folder. Only server-compatible mods are installed. You can skip this and add mods manually later.</p>
+                <div class="field full-width" style="margin-top:20px">
+                    <label>Modrinth Pack (.mrpack)</label>
+                    <div class="path-row">
+                        <input type="text" id="mrpackInput" placeholder="Browse for .mrpack file or paste a download URL">
+                        <button class="btn btn-secondary" onclick="browseMrpack()">Browse</button>
+                    </div>
+                    <div class="hint">Supports local .mrpack files and direct Modrinth download URLs</div>
+                </div>
+                <div class="modal-actions">
+                    <button class="btn btn-ghost" id="btnSkipMods">Skip — no mods</button>
+                    <button class="btn btn-primary" id="btnContinueMods">Continue →</button>
                 </div>
             </div>
         </div>

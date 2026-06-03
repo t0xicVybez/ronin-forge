@@ -566,6 +566,80 @@ select option { background: var(--surface2); }
     line-height: 1.5;
 }
 
+/* ── Modpack modal ────────────────────────────────────────────────────────── */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.65);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+}
+
+.modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 28px 32px;
+    max-width: 460px;
+    width: 90%;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+}
+
+.modal h3 {
+    font-size: 17px;
+    font-weight: 700;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.modal-subtitle {
+    font-size: 13px;
+    color: var(--text-mute);
+    line-height: 1.6;
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 24px;
+}
+
+/* ── Large-game warning ───────────────────────────────────────────────────── */
+.large-game-warning {
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+    background: rgba(210, 153, 34, 0.08);
+    border: 1px solid var(--warn);
+    border-radius: var(--radius);
+    padding: 12px 16px;
+    margin-top: 16px;
+}
+
+.large-game-warning-icon { font-size: 20px; flex-shrink: 0; }
+
+.large-game-warning strong {
+    display: block;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--warn);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 4px;
+}
+
+.large-game-warning p {
+    margin: 0;
+    font-size: 12px;
+    color: var(--text-mute);
+    line-height: 1.5;
+}
+
 /* ── Misc ─────────────────────────────────────────────────────────────────── */
 .tag {
     display: inline-block;

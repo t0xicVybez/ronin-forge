@@ -48,7 +48,6 @@ function runSteamCMD(args, signal, onLine) {
         proc.stderr.on('data', (data) => onLine(data.toString()));
 
         proc.on('close', (code) => {
-            // SteamCMD exits 7 when app is already up to date — treat as success
             if (code === 0 || code === 7) resolve();
             else reject(new Error(`SteamCMD exited with code ${code}`));
         });
@@ -56,6 +55,40 @@ function runSteamCMD(args, signal, onLine) {
         proc.on('error', reject);
     });
 }
+
+// ── Progress helpers ──────────────────────────────────────────────────────────
+
+function getDirBytes(dir, depth = 3) {
+    let total = 0;
+    try {
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+            try {
+                const full = path.join(dir, entry.name);
+                if (entry.isFile()) {
+                    total += fs.statSync(full).size;
+                } else if (entry.isDirectory() && depth > 0) {
+                    total += getDirBytes(full, depth - 1);
+                }
+            } catch {}
+        }
+    } catch {}
+    return total;
+}
+
+function formatSpeed(bps) {
+    if (bps >= 1024 * 1024) return `${(bps / (1024 * 1024)).toFixed(1)} MB/s`;
+    if (bps >= 1024) return `${Math.round(bps / 1024)} KB/s`;
+    return `${Math.round(bps)} B/s`;
+}
+
+function formatETA(sec) {
+    if (!sec || !isFinite(sec) || sec <= 0) return '';
+    if (sec < 60) return `${sec}s left`;
+    if (sec < 3600) return `${Math.floor(sec / 60)}m ${sec % 60}s left`;
+    return `${Math.floor(sec / 3600)}h ${Math.floor((sec % 3600) / 60)}m left`;
+}
+
+// ── State-code labels ─────────────────────────────────────────────────────────
 
 const STATE_LABELS = {
     '0x3':   'Reconfiguring',
@@ -67,10 +100,9 @@ const STATE_LABELS = {
     '0x5':   'Validating',
 };
 
-// Connection-phase strings SteamCMD prints before download state codes appear.
-// On Windows, SteamCMD often writes progress via WriteConsoleW (not stdout) when
-// it detects no real TTY, so these may or may not arrive — the elapsed timer and
-// disk-space polling below provide progress regardless.
+// Connection-phase strings SteamCMD may print to stdout before state codes.
+// On Windows, SteamCMD often uses WriteConsoleW (bypasses stdout) when it
+// detects no real TTY — these may or may not arrive.
 const CONNECT_MESSAGES = [
     { match: 'Loading Steam API',      pct: 3,  msg: 'Loading Steam API...' },
     { match: 'Connecting anonymously', pct: 6,  msg: 'Connecting to Steam...' },
@@ -78,6 +110,8 @@ const CONNECT_MESSAGES = [
     { match: 'Logged in OK',           pct: 14, msg: 'Logged in to Steam' },
     { match: 'Waiting for user info',  pct: 18, msg: 'Fetching server info...' },
 ];
+
+// ── Installer ─────────────────────────────────────────────────────────────────
 
 async function installApp(appId, installDir, onProgress, onLog, signal, expectedGB = 0) {
     await ensureSteamCMD(onProgress);
@@ -92,14 +126,15 @@ async function installApp(appId, installDir, onProgress, onLog, signal, expected
         '+quit'
     ];
 
-    let lastPct      = 0;
-    let stalledTimer = null;
-    let downloading  = false; // true once real download bytes are confirmed
-    let lastMsg      = 'Starting Steam...';
+    let lastPct         = 0;
+    let stalledTimer    = null;
+    let downloading     = false;
+    let stateCodeActive = false; // true once SteamCMD stdout gives real %
+    let lastMsg         = 'Starting Steam...';
 
     // ── Elapsed-time counter ────────────────────────────────────────────────
-    // Fires every second so the status text always changes, proving the app
-    // isn't hung even when SteamCMD sends no output (WriteConsoleW bypass).
+    // Updates the status label every second so the UI never looks frozen,
+    // even when SteamCMD emits nothing via stdout.
     let elapsedSec = 0;
     const elapsedTimer = setInterval(() => {
         elapsedSec++;
@@ -110,63 +145,57 @@ async function installApp(appId, installDir, onProgress, onLog, signal, expected
         onProgress('connect', 20, `${lastMsg} (${t})`);
     }, 1000);
 
-    // ── Disk-space polling ──────────────────────────────────────────────────
-    // Derives approximate download % from free-space delta on the install drive.
-    // Works even when SteamCMD stdout is silent (WriteConsoleW bypass on Windows).
-    //
-    // Two safeguards against false readings:
-    //   1. 15 s grace period — lets SteamCMD initialize and self-update before
-    //      we take a baseline, so those writes don't count as game download.
-    //   2. 20 % cap per poll — prevents a single anomalous measurement from
-    //      jumping the bar to an unrealistic value.
-    let diskTimer        = null;
-    let stateCodeWorking = false; // true once SteamCMD stdout gives real progress
-    const expectedBytes  = expectedGB * 1024 * 1024 * 1024;
+    // ── Directory-scan progress ─────────────────────────────────────────────
+    // Measures bytes written to installDir directly — more reliable than
+    // statfs on Windows (which caches disk-usage figures aggressively).
+    // SteamCMD writes game files to installDir progressively as chunks
+    // are verified, so the size grows in step with actual download progress.
+    let diskTimer   = null;
+    let prevBytes   = 0;
+    let prevTime    = Date.now();
+    let lastSpeedBps = 0;
+    const expectedBytes = expectedGB * 1024 * 1024 * 1024;
 
     if (expectedGB > 0) {
-        try {
-            const root        = path.parse(installDir).root || installDir;
-            const GRACE_MS    = 15_000;
-            const startAt     = Date.now() + GRACE_MS;
-            let freeBefore    = 0;
-            let baselineTaken = false;
+        diskTimer = setInterval(() => {
+            if (stateCodeActive) return; // stdout progress is more accurate
 
-            diskTimer = setInterval(async () => {
-                if (stateCodeWorking)     return; // state-code path is more accurate
-                if (Date.now() < startAt) return; // still in grace period
+            const currentBytes = getDirBytes(installDir);
+            const now          = Date.now();
+            const elapsedMs    = now - prevTime;
+            const byteDelta    = currentBytes - prevBytes;
 
-                try {
-                    const s    = await fs.promises.statfs(root);
-                    const free = s.bavail * s.bsize;
+            if (currentBytes > 25 * 1024 * 1024) { // > 25 MB present in dir
+                downloading = true;
 
-                    if (!baselineTaken) {
-                        // First tick after grace — capture post-init baseline
-                        freeBefore    = free;
-                        baselineTaken = true;
-                        return;
-                    }
+                const rawPct = Math.min(95, Math.round((currentBytes / expectedBytes) * 100));
+                // Cap single-poll jump to 20 % to guard against anomalies
+                const reportPct = Math.min(lastPct + 20, rawPct);
 
-                    const usedBytes = freeBefore - free;
-                    if (usedBytes < 25 * 1024 * 1024) return; // ignore < 25 MB noise
+                if (byteDelta > 0) lastSpeedBps = (byteDelta / elapsedMs) * 1000;
+                const remaining = Math.max(0, expectedBytes - currentBytes);
+                const etaSec    = lastSpeedBps > 0 ? Math.round(remaining / lastSpeedBps) : 0;
 
-                    const rawPct    = Math.min(95, Math.round((usedBytes / expectedBytes) * 100));
-                    // Cap single-poll jump to 20 % to guard against measurement spikes
-                    const reportPct = Math.min(lastPct + 20, rawPct);
+                let msg = `Downloading... ~${reportPct}%`;
+                if (lastSpeedBps > 0)          msg += ` · ${formatSpeed(lastSpeedBps)}`;
+                if (etaSec > 60 && reportPct < 94) msg += ` · ${formatETA(etaSec)}`;
 
-                    if (reportPct > lastPct) {
-                        lastPct     = reportPct;
-                        downloading = true;
-                        onProgress('download', reportPct, `Downloading... ~${reportPct}%`);
-                    }
-                } catch {}
-            }, 5000);
-        } catch {}
+                if (reportPct > lastPct) {
+                    lastPct = reportPct;
+                    onProgress('download', reportPct, msg);
+                }
+            }
+
+            prevBytes = currentBytes;
+            prevTime  = now;
+        }, 5000);
     }
 
+    // ── SteamCMD output parsing ─────────────────────────────────────────────
     await runSteamCMD(args, signal, (text) => {
         if (onLog) onLog(text);
 
-        // ── Connection-phase messages ───────────────────────────────────────
+        // Connection-phase messages
         if (!downloading) {
             for (const { match, pct, msg } of CONNECT_MESSAGES) {
                 if (text.includes(match)) {
@@ -177,8 +206,7 @@ async function installApp(appId, installDir, onProgress, onLog, signal, expected
             }
         }
 
-        // ── State-code lines ────────────────────────────────────────────────
-        // "Update state (0x61) downloading, progress: 58.32 (1234 / 5678)"
+        // State-code lines: "Update state (0x61) downloading, progress: 58.32 (...)"
         const stateMatch = text.match(/Update state \((0x[\da-f]+)\)\s+([^,\n]+)/i);
         const pctMatch   = text.match(/progress:\s+([\d.]+)/);
         if (!stateMatch) return;
@@ -190,16 +218,15 @@ async function installApp(appId, installDir, onProgress, onLog, signal, expected
             const pct = Math.min(99, Math.round(parseFloat(pctMatch[1])));
 
             if (pct === 0) {
-                // Still preparing (reconfiguring / preallocating) — keep shimmer
                 lastMsg = `${label}...`;
                 onProgress('connect', 20, `${label}...`);
                 return;
             }
 
-            // Real SteamCMD percentage is more accurate than disk polling
-            downloading      = true;
-            stateCodeWorking = true;
-            const isRetry    = pct < lastPct;
+            // SteamCMD is giving real percentages — disable dir-scan path
+            stateCodeActive = true;
+            downloading = true;
+            const isRetry = pct < lastPct;
             lastPct = pct;
             onProgress('download', pct, isRetry ? `Retrying... ${pct}%` : `${label}... ${pct}%`);
         } else {
@@ -214,7 +241,7 @@ async function installApp(appId, installDir, onProgress, onLog, signal, expected
     });
 
     clearInterval(elapsedTimer);
-    if (diskTimer) clearInterval(diskTimer);
+    if (diskTimer)   clearInterval(diskTimer);
     if (stalledTimer) clearTimeout(stalledTimer);
     onProgress('download', 100, 'Download complete');
 }

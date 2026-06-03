@@ -14,6 +14,8 @@ contextBridge.exposeInMainWorld('api', {
             'select-folder', 'select-file',
             'check-rsm-installed',
             'check-disk-space',
+            'check-port',
+            'validate-java',
             'get-minecraft-versions',
             'get-forge-versions',
             'start-install',
