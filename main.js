@@ -3,6 +3,9 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 
+// Must be set before app is ready so Windows uses this as the notification sender
+app.setAppUserModelId('Ronin Forge');
+
 let mainWindow;
 let currentAbort = null;
 
