@@ -256,10 +256,10 @@ async function performInstall(gameId, installDir, formData, onProgress, onLog, s
             return mc.installVanilla(formData.mcVersion, installDir, onProgress, signal);
 
         case 'minecraft-forge':
-            return mc.installForge(formData.mcVersion, formData.forgeVersion, installDir, formData.javaPath, onProgress, signal);
+            return mc.installForge(formData.mcVersion, formData.forgeVersion, installDir, formData.javaPath, onProgress, onLog, signal);
 
         case 'minecraft-fabric':
-            return mc.installFabric(formData.mcVersion, installDir, formData.javaPath, onProgress, signal);
+            return mc.installFabric(formData.mcVersion, installDir, formData.javaPath, onProgress, onLog, signal);
 
         case 'ark-ase':
             await steam.installApp('376030', installDir, onProgress, onLog, signal);

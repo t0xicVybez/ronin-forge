@@ -55,7 +55,7 @@ async function installVanilla(versionId, installDir, onProgress, signal) {
     return { type: 'jar', jarName: 'server.jar' };
 }
 
-async function installForge(mcVersion, forgeFullVersion, installDir, javaPath, onProgress, signal) {
+async function installForge(mcVersion, forgeFullVersion, installDir, javaPath, onProgress, onLog, signal) {
     fs.mkdirSync(installDir, { recursive: true });
 
     const installerUrl = `https://maven.minecraftforge.net/net/minecraftforge/forge/${forgeFullVersion}/forge-${forgeFullVersion}-installer.jar`;
@@ -67,7 +67,7 @@ async function installForge(mcVersion, forgeFullVersion, installDir, javaPath, o
     });
 
     onProgress('install', 52, 'Running Forge installer (this may take a few minutes)...');
-    await runJava(javaPath, ['-jar', installerPath, '--installServer'], installDir, signal);
+    await runJava(javaPath, ['-jar', installerPath, '--installServer'], installDir, signal, onLog);
     try { fs.unlinkSync(installerPath); } catch {}
 
     onProgress('config', 97, 'Writing initial config...');
@@ -81,7 +81,7 @@ async function installForge(mcVersion, forgeFullVersion, installDir, javaPath, o
     return { type: runBat ? 'bat' : 'jar', runBat, universalJar };
 }
 
-async function installFabric(mcVersion, installDir, javaPath, onProgress, signal) {
+async function installFabric(mcVersion, installDir, javaPath, onProgress, onLog, signal) {
     fs.mkdirSync(installDir, { recursive: true });
 
     onProgress('fetch', 3, 'Fetching Fabric installer version...');
@@ -98,7 +98,7 @@ async function installFabric(mcVersion, installDir, javaPath, onProgress, signal
     });
 
     onProgress('install', 52, 'Installing Fabric server...');
-    await runJava(javaPath, ['-jar', installerPath, 'server', '-mcversion', mcVersion, '-downloadMinecraft'], installDir, signal);
+    await runJava(javaPath, ['-jar', installerPath, 'server', '-mcversion', mcVersion, '-downloadMinecraft'], installDir, signal, onLog);
     try { fs.unlinkSync(installerPath); } catch {}
 
     onProgress('config', 97, 'Writing initial config...');
@@ -123,7 +123,7 @@ function writeServerProperties(installDir, opts) {
     fs.writeFileSync(path.join(installDir, 'server.properties'), lines.join('\n'), 'utf8');
 }
 
-function runJava(javaPath, args, cwd, signal) {
+function runJava(javaPath, args, cwd, signal, onLog) {
     return new Promise((resolve, reject) => {
         const proc = spawn(javaPath, args, { cwd, stdio: 'pipe' });
 
@@ -135,6 +135,11 @@ function runJava(javaPath, args, cwd, signal) {
                 reject(err);
             });
         }
+
+        // Drain stdout/stderr — required to prevent the OS pipe buffer from
+        // filling and deadlocking the Java process. Forward to log if provided.
+        proc.stdout.on('data', (d) => { if (onLog) onLog(d.toString()); });
+        proc.stderr.on('data', (d) => { if (onLog) onLog(d.toString()); });
 
         proc.on('close', (code) => {
             if (code === 0) resolve();
