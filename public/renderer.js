@@ -398,9 +398,10 @@ async function startInstall() {
     document.getElementById('installLog').textContent = '';
 
     const result = await api.invoke('start-install', {
-        gameId: selectedGame.id,
+        gameId:   selectedGame.id,
         installDir,
         formData,
+        diskGB:   selectedGame.diskGB,
     });
 
     if (result.cancelled) {

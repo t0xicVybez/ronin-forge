@@ -67,16 +67,19 @@ const STATE_LABELS = {
     '0x5':   'Validating',
 };
 
-// Known connection-phase strings SteamCMD prints before download state codes appear
+// Connection-phase strings SteamCMD prints before download state codes appear.
+// On Windows, SteamCMD often writes progress via WriteConsoleW (not stdout) when
+// it detects no real TTY, so these may or may not arrive — the elapsed timer and
+// disk-space polling below provide progress regardless.
 const CONNECT_MESSAGES = [
-    { match: 'Loading Steam API',        pct: 3,  msg: 'Loading Steam API...' },
-    { match: 'Connecting anonymously',   pct: 6,  msg: 'Connecting to Steam...' },
-    { match: 'Connecting to Steam',      pct: 6,  msg: 'Connecting to Steam...' },
-    { match: 'Logged in OK',             pct: 14, msg: 'Logged in to Steam' },
-    { match: 'Waiting for user info',    pct: 18, msg: 'Fetching server info...' },
+    { match: 'Loading Steam API',      pct: 3,  msg: 'Loading Steam API...' },
+    { match: 'Connecting anonymously', pct: 6,  msg: 'Connecting to Steam...' },
+    { match: 'Connecting to Steam',    pct: 6,  msg: 'Connecting to Steam...' },
+    { match: 'Logged in OK',           pct: 14, msg: 'Logged in to Steam' },
+    { match: 'Waiting for user info',  pct: 18, msg: 'Fetching server info...' },
 ];
 
-async function installApp(appId, installDir, onProgress, onLog, signal) {
+async function installApp(appId, installDir, onProgress, onLog, signal, expectedGB = 0) {
     await ensureSteamCMD(onProgress);
 
     fs.mkdirSync(installDir, { recursive: true });
@@ -89,26 +92,71 @@ async function installApp(appId, installDir, onProgress, onLog, signal) {
         '+quit'
     ];
 
-    let lastPct = 0;
+    let lastPct      = 0;
     let stalledTimer = null;
-    let downloading = false; // true once SteamCMD reports progress > 0
+    let downloading  = false; // true once real download bytes are confirmed
+    let lastMsg      = 'Starting Steam...';
+
+    // ── Elapsed-time counter ────────────────────────────────────────────────
+    // Fires every second so the status text always changes, proving the app
+    // isn't hung even when SteamCMD sends no output (WriteConsoleW bypass).
+    let elapsedSec = 0;
+    const elapsedTimer = setInterval(() => {
+        elapsedSec++;
+        if (downloading) return;
+        const t = elapsedSec < 60
+            ? `${elapsedSec}s`
+            : `${Math.floor(elapsedSec / 60)}m ${elapsedSec % 60}s`;
+        onProgress('connect', 20, `${lastMsg} (${t})`);
+    }, 1000);
+
+    // ── Disk-space polling ──────────────────────────────────────────────────
+    // Measures how much free space has been consumed on the target drive as a
+    // proxy for bytes downloaded. Works even when SteamCMD stdout is silent.
+    let diskTimer  = null;
+    let freeBefore = 0;
+    const expectedBytes = expectedGB * 1024 * 1024 * 1024;
+
+    try {
+        const root = path.parse(installDir).root || installDir;
+        const s = await fs.promises.statfs(root);
+        freeBefore = s.bavail * s.bsize;
+
+        diskTimer = setInterval(async () => {
+            try {
+                const s2 = await fs.promises.statfs(root);
+                const usedBytes = freeBefore - s2.bavail * s2.bsize;
+                // Ignore sub-10 MB changes (filesystem noise / other apps)
+                if (usedBytes < 10 * 1024 * 1024 || expectedBytes <= 0) return;
+
+                const pct = Math.min(95, Math.round((usedBytes / expectedBytes) * 100));
+                if (pct > lastPct) {
+                    lastPct     = pct;
+                    downloading = true;
+                    onProgress('download', pct, `Downloading... ~${pct}%`);
+                }
+            } catch {}
+        }, 3000);
+    } catch {}
 
     await runSteamCMD(args, signal, (text) => {
         if (onLog) onLog(text);
 
-        // ── Connection phase ────────────────────────────────────────────────
-        // Only check these before actual download bytes have started flowing
+        // ── Connection-phase messages ───────────────────────────────────────
         if (!downloading) {
             for (const { match, pct, msg } of CONNECT_MESSAGES) {
-                if (text.includes(match)) { onProgress('connect', pct, msg); return; }
+                if (text.includes(match)) {
+                    lastMsg = msg;
+                    onProgress('connect', pct, msg);
+                    return;
+                }
             }
         }
 
-        // ── State code lines ────────────────────────────────────────────────
+        // ── State-code lines ────────────────────────────────────────────────
         // "Update state (0x61) downloading, progress: 58.32 (1234 / 5678)"
         const stateMatch = text.match(/Update state \((0x[\da-f]+)\)\s+([^,\n]+)/i);
         const pctMatch   = text.match(/progress:\s+([\d.]+)/);
-
         if (!stateMatch) return;
 
         const code  = stateMatch[1].toLowerCase();
@@ -117,21 +165,21 @@ async function installApp(appId, installDir, onProgress, onLog, signal) {
         if (pctMatch) {
             const pct = Math.min(99, Math.round(parseFloat(pctMatch[1])));
 
-            if (pct > 0) downloading = true;
-
-            // While progress is still 0 (reconfiguring / preallocating), keep
-            // the animated connect bar so the UI doesn't look frozen.
-            if (!downloading) {
+            if (pct === 0) {
+                // Still preparing (reconfiguring / preallocating) — keep shimmer
+                lastMsg = `${label}...`;
                 onProgress('connect', 20, `${label}...`);
                 return;
             }
 
+            // Real SteamCMD percentage is more accurate than disk polling
+            downloading = true;
             const isRetry = pct < lastPct;
             lastPct = pct;
             onProgress('download', pct, isRetry ? `Retrying... ${pct}%` : `${label}... ${pct}%`);
         } else {
-            const stage = downloading ? 'download' : 'connect';
-            onProgress(stage, lastPct, `${label}...`);
+            lastMsg = `${label}...`;
+            onProgress(downloading ? 'download' : 'connect', lastPct, `${label}...`);
         }
 
         if (stalledTimer) clearTimeout(stalledTimer);
@@ -140,6 +188,8 @@ async function installApp(appId, installDir, onProgress, onLog, signal) {
         }, 5000);
     });
 
+    clearInterval(elapsedTimer);
+    if (diskTimer) clearInterval(diskTimer);
     if (stalledTimer) clearTimeout(stalledTimer);
     onProgress('download', 100, 'Download complete');
 }
