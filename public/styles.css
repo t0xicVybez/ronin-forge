@@ -410,6 +410,24 @@ select option { background: var(--surface2); }
     width: 0%;
 }
 
+.progress-fill.connecting {
+    width: 100% !important;
+    background: repeating-linear-gradient(
+        90deg,
+        var(--accent)   0px,
+        var(--accent-h) 14px,
+        var(--accent)   28px
+    );
+    background-size: 56px 100%;
+    animation: steam-stripes 0.55s linear infinite;
+    transition: none;
+}
+
+@keyframes steam-stripes {
+    from { background-position:  0    0; }
+    to   { background-position: 56px  0; }
+}
+
 #installLog {
     background: var(--surface);
     border: 1px solid var(--border);

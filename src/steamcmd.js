@@ -67,11 +67,20 @@ const STATE_LABELS = {
     '0x5':   'Validating',
 };
 
+// Known connection-phase strings SteamCMD prints before download state codes appear
+const CONNECT_MESSAGES = [
+    { match: 'Loading Steam API',        pct: 3,  msg: 'Loading Steam API...' },
+    { match: 'Connecting anonymously',   pct: 6,  msg: 'Connecting to Steam...' },
+    { match: 'Connecting to Steam',      pct: 6,  msg: 'Connecting to Steam...' },
+    { match: 'Logged in OK',             pct: 14, msg: 'Logged in to Steam' },
+    { match: 'Waiting for user info',    pct: 18, msg: 'Fetching server info...' },
+];
+
 async function installApp(appId, installDir, onProgress, onLog, signal) {
     await ensureSteamCMD(onProgress);
 
     fs.mkdirSync(installDir, { recursive: true });
-    onProgress('download', 0, 'Connecting to Steam...');
+    onProgress('connect', 1, 'Starting Steam...');
 
     const args = [
         '+force_install_dir', installDir,
@@ -82,33 +91,53 @@ async function installApp(appId, installDir, onProgress, onLog, signal) {
 
     let lastPct = 0;
     let stalledTimer = null;
+    let downloading = false; // true once SteamCMD reports progress > 0
 
     await runSteamCMD(args, signal, (text) => {
         if (onLog) onLog(text);
 
+        // ── Connection phase ────────────────────────────────────────────────
+        // Only check these before actual download bytes have started flowing
+        if (!downloading) {
+            for (const { match, pct, msg } of CONNECT_MESSAGES) {
+                if (text.includes(match)) { onProgress('connect', pct, msg); return; }
+            }
+        }
+
+        // ── State code lines ────────────────────────────────────────────────
         // "Update state (0x61) downloading, progress: 58.32 (1234 / 5678)"
         const stateMatch = text.match(/Update state \((0x[\da-f]+)\)\s+([^,\n]+)/i);
         const pctMatch   = text.match(/progress:\s+([\d.]+)/);
 
-        if (stateMatch) {
-            const code  = stateMatch[1].toLowerCase();
-            const label = STATE_LABELS[code] || stateMatch[2].trim();
+        if (!stateMatch) return;
 
-            if (pctMatch) {
-                const pct    = Math.min(99, Math.round(parseFloat(pctMatch[1])));
-                const isRetry = pct < lastPct;
-                lastPct = pct;
-                onProgress('download', pct, isRetry ? `Retrying... ${pct}%` : `${label}... ${pct}%`);
-            } else {
-                onProgress('download', lastPct, `${label}...`);
+        const code  = stateMatch[1].toLowerCase();
+        const label = STATE_LABELS[code] || stateMatch[2].trim();
+
+        if (pctMatch) {
+            const pct = Math.min(99, Math.round(parseFloat(pctMatch[1])));
+
+            if (pct > 0) downloading = true;
+
+            // While progress is still 0 (reconfiguring / preallocating), keep
+            // the animated connect bar so the UI doesn't look frozen.
+            if (!downloading) {
+                onProgress('connect', 20, `${label}...`);
+                return;
             }
 
-            // If no new output for 5 s, show a waiting message
-            if (stalledTimer) clearTimeout(stalledTimer);
-            stalledTimer = setTimeout(() => {
-                onProgress('download', lastPct, `Waiting for Steam CDN... ${lastPct}%`);
-            }, 5000);
+            const isRetry = pct < lastPct;
+            lastPct = pct;
+            onProgress('download', pct, isRetry ? `Retrying... ${pct}%` : `${label}... ${pct}%`);
+        } else {
+            const stage = downloading ? 'download' : 'connect';
+            onProgress(stage, lastPct, `${label}...`);
         }
+
+        if (stalledTimer) clearTimeout(stalledTimer);
+        stalledTimer = setTimeout(() => {
+            onProgress('download', lastPct, `Waiting for Steam CDN... ${lastPct}%`);
+        }, 5000);
     });
 
     if (stalledTimer) clearTimeout(stalledTimer);

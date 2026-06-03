@@ -357,7 +357,23 @@ function setupInstallProgress() {
     api.receive('install-progress', ({ stage, percent, message }) => {
         document.getElementById('installStage').textContent = stage.toUpperCase();
         document.getElementById('progressMsg').textContent  = message;
-        document.getElementById('progressFill').style.width = `${percent}%`;
+
+        const fill = document.getElementById('progressFill');
+        if (stage === 'connect') {
+            // Indeterminate shimmer — CSS controls the visual, no inline width
+            fill.classList.add('connecting');
+        } else {
+            if (fill.classList.contains('connecting')) {
+                // Transitioning out of connect phase: snap to real percent
+                // without animating backwards from the shimmer's implied position
+                fill.style.transition = 'none';
+                fill.classList.remove('connecting');
+                fill.style.width = `${percent}%`;
+                requestAnimationFrame(() => { fill.style.transition = ''; });
+            } else {
+                fill.style.width = `${percent}%`;
+            }
+        }
     });
 
     api.receive('install-log', (line) => {
