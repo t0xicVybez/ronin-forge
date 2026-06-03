@@ -230,7 +230,7 @@ async function installApp(appId, installDir, onProgress, onLog, signal) {
     // Only used for: (a) connect-phase labels, (b) non-download phase labels
     // (Preallocating, Verifying, Committing). Does NOT drive the progress bar.
     await runSteamCMD(args, signal, (text) => {
-        if (onLog) onLog(text);
+        if (onLog && !text.trimStart().startsWith('Update state')) onLog(text);
 
         if (!downloading) {
             for (const { match, pct, msg } of CONNECT_MESSAGES) {
