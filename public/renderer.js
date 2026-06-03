@@ -116,7 +116,11 @@ function stepNextConfig() {
         case 3: return {
             label: 'Install',
             enabled: true,
-            action: () => startInstall(),
+            action: () => startInstall().catch(err => {
+                document.getElementById('progressMsg').textContent = `Unexpected error: ${err.message}`;
+                document.getElementById('installStage').textContent = 'FAILED';
+                document.getElementById('progressFill').style.background = 'var(--error)';
+            }),
         };
         case 4: return {
             label: 'Cancel',

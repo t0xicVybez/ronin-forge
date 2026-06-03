@@ -67,7 +67,20 @@ async function installForge(mcVersion, forgeFullVersion, installDir, javaPath, o
     });
 
     onProgress('install', 52, 'Running Forge installer (this may take a few minutes)...');
-    await runJava(javaPath, ['-jar', installerPath, '--installServer'], installDir, signal, onLog);
+
+    // Slowly advance the bar so the user sees movement during the long install.
+    // Asymptotic curve toward 89% — never reaches it, so we never overshoot.
+    let forgePct = 52;
+    const forgeTimer = setInterval(() => {
+        forgePct = Math.min(89, forgePct + Math.max(0.05, (89 - forgePct) * 0.004));
+        onProgress('install', Math.round(forgePct), 'Running Forge installer (this may take a few minutes)...');
+    }, 1000);
+
+    try {
+        await runJava(javaPath, ['-jar', installerPath, '--installServer'], installDir, signal, onLog);
+    } finally {
+        clearInterval(forgeTimer);
+    }
     try { fs.unlinkSync(installerPath); } catch {}
 
     onProgress('config', 97, 'Writing initial config...');
@@ -98,7 +111,18 @@ async function installFabric(mcVersion, installDir, javaPath, onProgress, onLog,
     });
 
     onProgress('install', 52, 'Installing Fabric server...');
-    await runJava(javaPath, ['-jar', installerPath, 'server', '-mcversion', mcVersion, '-downloadMinecraft'], installDir, signal, onLog);
+
+    let fabricPct = 52;
+    const fabricTimer = setInterval(() => {
+        fabricPct = Math.min(89, fabricPct + Math.max(0.05, (89 - fabricPct) * 0.004));
+        onProgress('install', Math.round(fabricPct), 'Installing Fabric server...');
+    }, 1000);
+
+    try {
+        await runJava(javaPath, ['-jar', installerPath, 'server', '-mcversion', mcVersion, '-downloadMinecraft'], installDir, signal, onLog);
+    } finally {
+        clearInterval(fabricTimer);
+    }
     try { fs.unlinkSync(installerPath); } catch {}
 
     onProgress('config', 97, 'Writing initial config...');
