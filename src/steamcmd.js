@@ -57,28 +57,61 @@ function runSteamCMD(args, signal, onLine) {
     });
 }
 
-async function installApp(appId, installDir, onProgress, signal) {
+const STATE_LABELS = {
+    '0x3':   'Reconfiguring',
+    '0x11':  'Preallocating disk',
+    '0x61':  'Downloading',
+    '0x65':  'Downloading',
+    '0x81':  'Verifying',
+    '0x101': 'Committing',
+    '0x5':   'Validating',
+};
+
+async function installApp(appId, installDir, onProgress, onLog, signal) {
     await ensureSteamCMD(onProgress);
 
     fs.mkdirSync(installDir, { recursive: true });
-    onProgress('download', 0, `Starting download (App ${appId})...`);
+    onProgress('download', 0, 'Connecting to Steam...');
 
     const args = [
-        '+login', 'anonymous',
         '+force_install_dir', installDir,
+        '+login', 'anonymous',
         '+app_update', String(appId), 'validate',
         '+quit'
     ];
 
+    let lastPct = 0;
+    let stalledTimer = null;
+
     await runSteamCMD(args, signal, (text) => {
-        // Parse: "Update state (0x61) downloading, progress: 58.32 (X / Y)"
-        const match = text.match(/progress:\s+([\d.]+)/);
-        if (match) {
-            const pct = Math.min(99, Math.round(parseFloat(match[1])));
-            onProgress('download', pct, `Downloading game files... ${pct}%`);
+        if (onLog) onLog(text);
+
+        // "Update state (0x61) downloading, progress: 58.32 (1234 / 5678)"
+        const stateMatch = text.match(/Update state \((0x[\da-f]+)\)\s+([^,\n]+)/i);
+        const pctMatch   = text.match(/progress:\s+([\d.]+)/);
+
+        if (stateMatch) {
+            const code  = stateMatch[1].toLowerCase();
+            const label = STATE_LABELS[code] || stateMatch[2].trim();
+
+            if (pctMatch) {
+                const pct    = Math.min(99, Math.round(parseFloat(pctMatch[1])));
+                const isRetry = pct < lastPct;
+                lastPct = pct;
+                onProgress('download', pct, isRetry ? `Retrying... ${pct}%` : `${label}... ${pct}%`);
+            } else {
+                onProgress('download', lastPct, `${label}...`);
+            }
+
+            // If no new output for 5 s, show a waiting message
+            if (stalledTimer) clearTimeout(stalledTimer);
+            stalledTimer = setTimeout(() => {
+                onProgress('download', lastPct, `Waiting for Steam CDN... ${lastPct}%`);
+            }, 5000);
         }
     });
 
+    if (stalledTimer) clearTimeout(stalledTimer);
     onProgress('download', 100, 'Download complete');
 }
 

@@ -73,15 +73,6 @@ ipcMain.handle('get-forge-versions', async (_, mcVersion) => {
     return mc.getForgeVersions(mcVersion);
 });
 
-// ── FiveM/RedM build info ────────────────────────────────────────────────────
-ipcMain.handle('get-fivem-build', async () => {
-    const fivem = require('./src/fivem-installer');
-    const build = await fivem.install; // just verify module loads
-    const axios = require('axios');
-    const resp = await axios.get('https://changelogs-live.fivem.net/api/cookbook/channel/live', { timeout: 10000 });
-    return resp.data.recommended || resp.data.critical || 'unknown';
-});
-
 // ── Java detection ───────────────────────────────────────────────────────────
 ipcMain.handle('find-java', async () => {
     const candidates = [
@@ -149,7 +140,6 @@ ipcMain.on('cancel-install', () => {
 async function performInstall(gameId, installDir, formData, onProgress, onLog, signal) {
     const steam = require('./src/steamcmd');
     const mc = require('./src/minecraft-installer');
-    const fivem = require('./src/fivem-installer');
 
     switch (gameId) {
         case 'minecraft-java':
@@ -162,26 +152,52 @@ async function performInstall(gameId, installDir, formData, onProgress, onLog, s
             return mc.installFabric(formData.mcVersion, installDir, formData.javaPath, onProgress, signal);
 
         case 'ark-ase':
-            await steam.installApp('376030', installDir, onProgress, signal);
+            await steam.installApp('376030', installDir, onProgress, onLog, signal);
             return {};
 
         case 'ark-asa':
-            await steam.installApp('2430930', installDir, onProgress, signal);
+            await steam.installApp('2430930', installDir, onProgress, onLog, signal);
             return {};
 
         case 'space-engineers':
-            await steam.installApp('298740', installDir, onProgress, signal);
+            await steam.installApp('298740', installDir, onProgress, onLog, signal);
             return {};
 
         case 'terraria':
-            await steam.installApp('105600', installDir, onProgress, signal);
+            await steam.installApp('105600', installDir, onProgress, onLog, signal);
             return {};
 
-        case 'fivem':
-            return fivem.install('fivem', installDir, onProgress, signal);
+        case 'valheim':
+            await steam.installApp('896660', installDir, onProgress, onLog, signal);
+            return {};
 
-        case 'redm':
-            return fivem.install('redm', installDir, onProgress, signal);
+        case 'rust':
+            await steam.installApp('258550', installDir, onProgress, onLog, signal);
+            return {};
+
+        case 'project-zomboid':
+            await steam.installApp('108600', installDir, onProgress, onLog, signal);
+            return {};
+
+        case '7-days-to-die':
+            await steam.installApp('294420', installDir, onProgress, onLog, signal);
+            return {};
+
+        case 'conan-exiles':
+            await steam.installApp('443030', installDir, onProgress, onLog, signal);
+            return {};
+
+        case 'palworld':
+            await steam.installApp('2394010', installDir, onProgress, onLog, signal);
+            return {};
+
+        case 'v-rising':
+            await steam.installApp('1829350', installDir, onProgress, onLog, signal);
+            return {};
+
+        case 'satisfactory':
+            await steam.installApp('1690800', installDir, onProgress, onLog, signal);
+            return {};
 
         default:
             throw new Error(`Unknown game: ${gameId}`);
@@ -190,7 +206,6 @@ async function performInstall(gameId, installDir, formData, onProgress, onLog, s
 
 async function writeGameConfig(gameId, installDir, formData, installerResult) {
     const mc = require('./src/minecraft-installer');
-    const fivem = require('./src/fivem-installer');
 
     if (gameId === 'minecraft-java' || gameId === 'minecraft-forge' || gameId === 'minecraft-fabric') {
         mc.writeServerProperties(installDir, {
@@ -210,13 +225,8 @@ async function writeGameConfig(gameId, installDir, formData, installerResult) {
         writeSEConfig(installDir, formData);
     }
 
-    if (gameId === 'fivem' || gameId === 'redm') {
-        fivem.writeServerCfg(installDir, {
-            serverName: formData.serverName,
-            licenseKey: formData.licenseKey,
-            port: formData.port,
-            maxClients: formData.maxClients,
-        });
+    if (gameId === '7-days-to-die') {
+        write7DTDConfig(installDir, formData);
     }
 }
 
@@ -243,18 +253,104 @@ function writeArkConfig(installDir, f) {
 }
 
 function writeSEConfig(installDir, f) {
-    const cfgDir = path.join(installDir, 'DedicatedServer');
+    // SE reads config from the instance path passed via -path argument
+    const cfgDir = path.join(installDir, 'Instance');
     fs.mkdirSync(cfgDir, { recursive: true });
+
+    const serverName  = f.serverName  || 'My Space Engineers Server';
+    const worldName   = f.worldName   || 'MyWorld';
+    const maxPlayers  = f.maxPlayers  || 16;
+    const port        = f.port        || 27016;
+    const steamPort   = f.steamPort   || 8766;
+    const password    = f.serverPass  || '';
+    const onlineMode  = password ? 'PRIVATE' : 'PUBLIC';
+    const gameMode    = f.gameMode    || 'Survival';
 
     const xml = `<?xml version="1.0"?>
 <MyConfigDedicated xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-  <ServerName>${f.serverName || 'My Space Engineers Server'}</ServerName>
-  <ListenPort>${f.port || 27016}</ListenPort>
-  <MaxPlayers>${f.maxPlayers || 16}</MaxPlayers>
+  <SessionSettings>
+    <OnlineMode>${onlineMode}</OnlineMode>
+    <GameMode>${gameMode}</GameMode>
+    <MaxPlayers>${maxPlayers}</MaxPlayers>
+    <AutoSaveInMinutes>5</AutoSaveInMinutes>
+    <EnableIngameScripts>false</EnableIngameScripts>
+    <EnableJetpack>true</EnableJetpack>
+    <EnableOxygen>true</EnableOxygen>
+    <AutoHealing>true</AutoHealing>
+    <EnableCopyPaste>true</EnableCopyPaste>
+    <Enable3rdPersonView>true</Enable3rdPersonView>
+    <SpaceCargoShipsEnabled>true</SpaceCargoShipsEnabled>
+    <EnableEncounters>true</EnableEncounters>
+    <PauseGameWhenEmpty>true</PauseGameWhenEmpty>
+  </SessionSettings>
+  <Administrators />
+  <Banned />
+  <Mods />
+  <ServerName>${serverName}</ServerName>
+  <WorldName>${worldName}</WorldName>
+  <ServerDescription></ServerDescription>
+  <ServerPassword>${password}</ServerPassword>
+  <GroupID>0</GroupID>
+  <ListenPort>${port}</ListenPort>
+  <SteamPort>${steamPort}</SteamPort>
+  <IP>0.0.0.0</IP>
+  <IPv6Enabled>false</IPv6Enabled>
   <AutoRestartEnabled>false</AutoRestartEnabled>
+  <WatcherEnabled>false</WatcherEnabled>
+  <PauseGameWhenEmpty>true</PauseGameWhenEmpty>
+  <ReservedSlots>0</ReservedSlots>
+  <RemoteApiEnabled>false</RemoteApiEnabled>
+  <RemoteApiPort>0</RemoteApiPort>
+  <RemoteApiKey></RemoteApiKey>
+  <Scenario xsi:nil="true" />
+  <LoadWorld></LoadWorld>
+  <SaveName></SaveName>
+  <IgnoreLastSession>false</IgnoreLastSession>
 </MyConfigDedicated>`;
 
     fs.writeFileSync(path.join(cfgDir, 'SpaceEngineers-Dedicated.cfg'), xml, 'utf8');
+}
+
+function write7DTDConfig(installDir, f) {
+    const serverName    = f.serverName    || 'My 7 Days to Die Server';
+    const serverPass    = f.serverPass    || '';
+    const adminPassword = f.adminPassword || 'admin';
+    const maxPlayers    = f.maxPlayers    || 8;
+    const port          = parseInt(f.port)       || 26900;
+    const telnetPort    = parseInt(f.telnetPort) || 8081;
+    const mapName       = f.mapName       || 'Navezgane';
+
+    const xml = `<?xml version="1.0"?>
+<ServerSettings>
+  <property name="ServerName"                 value="${serverName}"/>
+  <property name="ServerDescription"          value=""/>
+  <property name="ServerPassword"             value="${serverPass}"/>
+  <property name="ServerPort"                 value="${port}"/>
+  <property name="ServerVisibility"           value="2"/>
+  <property name="ServerMaxPlayerCount"       value="${maxPlayers}"/>
+  <property name="ServerReservedSlots"        value="0"/>
+  <property name="ServerAdminSlots"           value="1"/>
+  <property name="ServerAdminSlotsPermission" value="0"/>
+  <property name="GameWorld"                  value="${mapName}"/>
+  <property name="WorldGenSeed"               value="asdf"/>
+  <property name="WorldGenSize"               value="6144"/>
+  <property name="GameName"                   value="${serverName}"/>
+  <property name="GameMode"                   value="GameModeSurvival"/>
+  <property name="GameDifficulty"             value="2"/>
+  <property name="DayNightLength"             value="60"/>
+  <property name="DayLightLength"             value="18"/>
+  <property name="BloodMoonFrequency"         value="7"/>
+  <property name="BloodMoonEnemyCount"        value="8"/>
+  <property name="EnemySpawnMode"             value="true"/>
+  <property name="DropOnDeath"                value="1"/>
+  <property name="TelnetEnabled"              value="true"/>
+  <property name="TelnetPort"                 value="${telnetPort}"/>
+  <property name="TelnetPassword"             value="${adminPassword}"/>
+  <property name="TerminalWindowEnabled"      value="true"/>
+  <property name="AdminFileName"              value="serveradmin.xml"/>
+</ServerSettings>`;
+
+    fs.writeFileSync(path.join(installDir, 'serverconfig.xml'), xml, 'utf8');
 }
 
 // ── RSM export ───────────────────────────────────────────────────────────────

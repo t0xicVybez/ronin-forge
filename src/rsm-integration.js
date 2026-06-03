@@ -2,23 +2,44 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 
-const RSM_DIR = path.join(os.homedir(), 'AppData', 'Roaming', 'Ronin Server Manager');
-const RSM_SERVERS_PATH = path.join(RSM_DIR, 'servers.json');
+// Electron userData is named after productName. Check all known variants so we
+// handle different RSM versions and install configurations.
+const APPDATA = process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming');
+
+const CANDIDATE_DIRS = [
+    path.join(APPDATA, 'Ronin-Server-Manager'),  // current productName
+    path.join(APPDATA, 'Ronin Server Manager'),   // older/alternate name
+    path.join(APPDATA, 'ronin-server-manager'),   // lowercase fallback
+];
+
+function findRSMDir() {
+    return CANDIDATE_DIRS.find(d => fs.existsSync(d)) || null;
+}
 
 function isInstalled() {
-    return fs.existsSync(RSM_DIR);
+    return findRSMDir() !== null;
+}
+
+function getServersPath() {
+    const dir = findRSMDir();
+    return dir ? path.join(dir, 'servers.json') : null;
 }
 
 function readServers() {
-    if (!fs.existsSync(RSM_SERVERS_PATH)) return [];
+    const p = getServersPath();
+    if (!p || !fs.existsSync(p)) return [];
     try {
-        return JSON.parse(fs.readFileSync(RSM_SERVERS_PATH, 'utf8'));
+        return JSON.parse(fs.readFileSync(p, 'utf8'));
     } catch {
         return [];
     }
 }
 
 function addServer(serverEntry) {
+    // Use the found dir, or default to the current productName if RSM isn't installed yet
+    const dir = findRSMDir() || CANDIDATE_DIRS[0];
+    const serversPath = path.join(dir, 'servers.json');
+
     const servers = readServers();
     const existing = servers.findIndex(s => s.id === serverEntry.id);
     if (existing >= 0) {
@@ -26,9 +47,10 @@ function addServer(serverEntry) {
     } else {
         servers.push(serverEntry);
     }
-    fs.mkdirSync(RSM_DIR, { recursive: true });
-    fs.writeFileSync(RSM_SERVERS_PATH, JSON.stringify(servers, null, 2), 'utf8');
+
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(serversPath, JSON.stringify(servers, null, 2), 'utf8');
     return { success: true };
 }
 
-module.exports = { isInstalled, readServers, addServer, RSM_SERVERS_PATH };
+module.exports = { isInstalled, findRSMDir, readServers, addServer };

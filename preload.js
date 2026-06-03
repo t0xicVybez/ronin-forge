@@ -15,7 +15,6 @@ contextBridge.exposeInMainWorld('api', {
             'check-rsm-installed',
             'get-minecraft-versions',
             'get-forge-versions',
-            'get-fivem-build',
             'start-install',
             'write-to-rsm',
             'export-server-json',
