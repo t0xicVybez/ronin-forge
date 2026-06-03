@@ -1,7 +1,7 @@
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 const extract = require('extract-zip');
 const { downloadFile } = require('./downloader');
 
@@ -56,15 +56,31 @@ function runSteamCMD(args, signal, onLine) {
     });
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Network stats ─────────────────────────────────────────────────────────────
+// Returns total bytes received across all adapters since adapter init.
+// Queried via PowerShell Get-NetAdapterStatistics which is always available
+// on Windows 10/11 and reflects real NIC counters regardless of SteamCMD
+// internal staging behaviour.
+function getNetBytesReceived() {
+    try {
+        const r = spawnSync(
+            'powershell',
+            ['-NoProfile', '-NonInteractive', '-Command',
+             '(Get-NetAdapterStatistics | Measure-Object -Property ReceivedBytes -Sum).Sum'],
+            { encoding: 'utf8', timeout: 4000, windowsHide: true }
+        );
+        return parseInt((r.stdout || '').trim()) || 0;
+    } catch { return 0; }
+}
 
-// Parse BytesDownloaded / BytesToDownload from a SteamCMD appmanifest .acf file.
-// SteamCMD updates this file in real-time as chunks are downloaded, making it
-// the most reliable progress source regardless of where chunks are staged.
+// ── ACF reader ────────────────────────────────────────────────────────────────
+// SteamCMD writes {installDir}/steamapps/appmanifest_{appId}.acf with
+// BytesToDownload and BytesDownloaded. Used for percentage only — it may
+// not be available or updated on all setups, so it is optional.
 function readACF(acfPath) {
     try {
-        const content  = fs.readFileSync(acfPath, 'utf8');
-        const toMatch  = content.match(/"BytesToDownload"\s+"(\d+)"/);
+        const content   = fs.readFileSync(acfPath, 'utf8');
+        const toMatch   = content.match(/"BytesToDownload"\s+"(\d+)"/);
         const doneMatch = content.match(/"BytesDownloaded"\s+"(\d+)"/);
         if (!toMatch || !doneMatch) return null;
         const total = parseInt(toMatch[1]);
@@ -73,6 +89,7 @@ function readACF(acfPath) {
     } catch { return null; }
 }
 
+// ── Format helpers ────────────────────────────────────────────────────────────
 function formatSpeed(bps) {
     if (bps >= 1024 * 1024) return `${(bps / (1024 * 1024)).toFixed(1)} MB/s`;
     if (bps >= 1024) return `${Math.round(bps / 1024)} KB/s`;
@@ -87,7 +104,6 @@ function formatETA(sec) {
 }
 
 // ── State-code label table ────────────────────────────────────────────────────
-
 const STATE_LABELS = {
     '0x3':   'Reconfiguring',
     '0x11':  'Preallocating disk',
@@ -98,9 +114,6 @@ const STATE_LABELS = {
     '0x5':   'Validating',
 };
 
-// Connection-phase strings SteamCMD may print before download begins.
-// On Windows, WriteConsoleW bypasses stdout when no real TTY is attached,
-// so these may or may not arrive — the ACF poller works regardless.
 const CONNECT_MESSAGES = [
     { match: 'Loading Steam API',      pct: 3,  msg: 'Loading Steam API...' },
     { match: 'Connecting anonymously', pct: 6,  msg: 'Connecting to Steam...' },
@@ -110,12 +123,15 @@ const CONNECT_MESSAGES = [
 ];
 
 // ── Installer ─────────────────────────────────────────────────────────────────
-
 async function installApp(appId, installDir, onProgress, onLog, signal) {
     await ensureSteamCMD(onProgress);
 
     fs.mkdirSync(installDir, { recursive: true });
     onProgress('connect', 1, 'Starting Steam...');
+
+    // Snapshot network bytes before SteamCMD touches anything.
+    // All bytes received after this point are attributed to the download.
+    const netBaseline = getNetBytesReceived();
 
     const args = [
         '+force_install_dir', installDir,
@@ -124,15 +140,12 @@ async function installApp(appId, installDir, onProgress, onLog, signal) {
         '+quit'
     ];
 
-    let lastPct         = 0;
-    let stalledTimer    = null;
-    let downloading     = false;
-    let stateCodeActive = false;
-    let lastMsg         = 'Starting Steam...';
+    let lastPct        = 0;
+    let downloading    = false;
+    let lastLabel      = 'Downloading';  // updated by stdout state codes
+    let lastMsg        = 'Starting Steam...';
 
-    // ── Elapsed-time counter ─────────────────────────────────────────────────
-    // Updates the status label every second in the connect phase so the UI
-    // always shows movement even when SteamCMD emits nothing via stdout.
+    // ── Elapsed-time counter (connect phase) ─────────────────────────────────
     let elapsedSec = 0;
     const elapsedTimer = setInterval(() => {
         elapsedSec++;
@@ -143,58 +156,82 @@ async function installApp(appId, installDir, onProgress, onLog, signal) {
         onProgress('connect', 20, `${lastMsg} (${t})`);
     }, 1000);
 
-    // ── ACF-based progress polling ───────────────────────────────────────────
-    // SteamCMD writes {installDir}/steamapps/appmanifest_{appId}.acf and
-    // updates BytesDownloaded inside it as each chunk is confirmed. This gives
-    // exact byte-level progress without needing stdout state codes or dir scans.
-    // A secondary path inside STEAMCMD_DIR covers edge-case install layouts.
+    // ── Network-based progress polling ───────────────────────────────────────
+    // Sole source of truth for % and speed. Polls every 1 s regardless of
+    // what SteamCMD stdout says. Speed = delta/interval; % = cumBytes/acfTotal.
+    // ACF provides the total; network bytes provide the consumed amount.
+    // This never goes stale: a tick always fires and always emits an update.
     const acfPaths = [
         path.join(installDir, 'steamapps', `appmanifest_${appId}.acf`),
         path.join(STEAMCMD_DIR, 'steamapps', `appmanifest_${appId}.acf`),
     ];
 
-    let prevDone     = 0;
-    let prevTime     = Date.now();
-    let lastSpeedBps = 0;
+    let prevNetBytes   = netBaseline;
+    let prevPollTime   = Date.now();
+    let smoothSpeedBps = 0;
+    let acfTotal       = 0;
 
-    const diskTimer = setInterval(() => {
-        if (stateCodeActive) return; // stdout state codes are more granular
-
-        let acf = null;
-        for (const p of acfPaths) {
-            acf = readACF(p);
-            if (acf) break;
-        }
-        if (!acf || acf.done <= 0) return;
-
-        downloading = true;
+    const netTimer = setInterval(() => {
+        const netNow  = getNetBytesReceived();
         const now     = Date.now();
-        const delta   = acf.done - prevDone;
-        const elapsed = now - prevTime;
+        const delta   = Math.max(0, netNow - prevNetBytes);
+        const elapsed = Math.max(1, now - prevPollTime) / 1000;
 
-        if (delta > 0 && elapsed > 0) lastSpeedBps = (delta / elapsed) * 1000;
-        prevDone = acf.done;
-        prevTime = now;
+        // EMA (α=0.35) — responsive but not jittery
+        if (delta > 0) {
+            const instantBps = delta / elapsed;
+            smoothSpeedBps = smoothSpeedBps === 0
+                ? instantBps
+                : 0.35 * instantBps + 0.65 * smoothSpeedBps;
+        } else {
+            // No bytes this tick — decay speed toward zero so display clears
+            smoothSpeedBps *= 0.7;
+        }
 
-        const pct = Math.min(95, Math.round((acf.done / acf.total) * 100));
-        if (pct <= lastPct) return; // never go backwards
+        prevNetBytes = netNow;
+        prevPollTime = now;
 
-        lastPct = pct;
-        const remaining = acf.total - acf.done;
-        const etaSec    = lastSpeedBps > 0 ? Math.round(remaining / lastSpeedBps) : 0;
+        const downloadedBytes = Math.max(0, netNow - netBaseline);
 
-        let msg = `Downloading... ${pct}%`;
-        if (lastSpeedBps > 0)         msg += ` · ${formatSpeed(lastSpeedBps)}`;
-        if (etaSec > 60 && pct < 94) msg += ` · ${formatETA(etaSec)}`;
+        // Wait for at least 2 MB before switching to download phase
+        if (downloadedBytes < 2 * 1024 * 1024) return;
+        downloading = true;
 
-        onProgress('download', pct, msg);
-    }, 3000);
+        // Refresh ACF total on every tick until we have it (file may appear late)
+        if (acfTotal === 0) {
+            for (const p of acfPaths) {
+                const acf = readACF(p);
+                if (acf && acf.total > 0) { acfTotal = acf.total; break; }
+            }
+        }
+
+        const spd = smoothSpeedBps > 1024 ? formatSpeed(smoothSpeedBps) : null;
+
+        if (acfTotal > 0) {
+            const pct = Math.min(95, Math.round((downloadedBytes / acfTotal) * 100));
+            lastPct = Math.max(lastPct, pct); // never go backwards
+
+            const remaining = Math.max(0, acfTotal - downloadedBytes);
+            const etaSec    = smoothSpeedBps > 0 ? Math.round(remaining / smoothSpeedBps) : 0;
+
+            let msg = `${lastLabel}... ${lastPct}%`;
+            if (spd)                          msg += ` · ${spd}`;
+            if (etaSec > 30 && lastPct < 95) msg += ` · ${formatETA(etaSec)}`;
+
+            onProgress('download', lastPct, msg);
+        } else {
+            // No ACF yet — still show speed so the user sees activity
+            const msg = spd ? `${lastLabel}... ${spd}` : `${lastLabel}...`;
+            onProgress('download', lastPct, msg);
+        }
+    }, 1000);
 
     // ── SteamCMD stdout parsing ──────────────────────────────────────────────
+    // Only used for: (a) connect-phase labels, (b) non-download phase labels
+    // (Preallocating, Verifying, Committing). Does NOT drive the progress bar.
     await runSteamCMD(args, signal, (text) => {
         if (onLog) onLog(text);
 
-        // Connection phase
         if (!downloading) {
             for (const { match, pct, msg } of CONNECT_MESSAGES) {
                 if (text.includes(match)) {
@@ -205,45 +242,18 @@ async function installApp(appId, installDir, onProgress, onLog, signal) {
             }
         }
 
-        // "Update state (0x61) downloading, progress: 58.32 (1234 / 5678)"
         const stateMatch = text.match(/Update state \((0x[\da-f]+)\)\s+([^,\n]+)/i);
-        const pctMatch   = text.match(/progress:\s+([\d.]+)/);
         if (!stateMatch) return;
 
         const code  = stateMatch[1].toLowerCase();
         const label = STATE_LABELS[code] || stateMatch[2].trim();
 
-        if (pctMatch) {
-            const pct = Math.min(99, Math.round(parseFloat(pctMatch[1])));
-
-            if (pct === 0) {
-                lastMsg = `${label}...`;
-                // Once downloading, stay in download stage — the final
-                // Reconfiguring/Committing pass also reports 0% and must not
-                // flip the bar back to the animated connect shimmer.
-                onProgress(downloading ? 'download' : 'connect', lastPct, `${label}...`);
-                return;
-            }
-
-            stateCodeActive = true;
-            downloading = true;
-            const isRetry = pct < lastPct;
-            lastPct = pct;
-            onProgress('download', pct, isRetry ? `Retrying... ${pct}%` : `${label}... ${pct}%`);
-        } else {
-            lastMsg = `${label}...`;
-            onProgress(downloading ? 'download' : 'connect', lastPct, `${label}...`);
-        }
-
-        if (stalledTimer) clearTimeout(stalledTimer);
-        stalledTimer = setTimeout(() => {
-            onProgress('download', lastPct, `Waiting for Steam CDN... ${lastPct}%`);
-        }, 5000);
+        // Keep lastLabel fresh so the network timer uses the right verb
+        lastLabel = label;
     });
 
     clearInterval(elapsedTimer);
-    clearInterval(diskTimer);
-    if (stalledTimer) clearTimeout(stalledTimer);
+    clearInterval(netTimer);
     onProgress('download', 100, 'Download complete');
 }
 
