@@ -156,11 +156,17 @@ async function installApp(appId, installDir, onProgress, onLog, signal, expected
     let lastSpeedBps = 0;
     const expectedBytes = expectedGB * 1024 * 1024 * 1024;
 
+    // SteamCMD stages chunks in steamapps/downloading/ before committing
+    // to installDir, so we scan both and take whichever is larger.
+    const stagingDir = path.join(STEAMCMD_DIR, 'steamapps', 'downloading');
+
     if (expectedGB > 0) {
         diskTimer = setInterval(() => {
             if (stateCodeActive) return; // stdout progress is more accurate
 
-            const currentBytes = getDirBytes(installDir);
+            const inInstall  = getDirBytes(installDir);
+            const inStaging  = getDirBytes(stagingDir, 2);
+            const currentBytes = Math.max(inInstall, inStaging);
             const now          = Date.now();
             const elapsedMs    = now - prevTime;
             const byteDelta    = currentBytes - prevBytes;
@@ -219,11 +225,14 @@ async function installApp(appId, installDir, onProgress, onLog, signal, expected
 
             if (pct === 0) {
                 lastMsg = `${label}...`;
-                onProgress('connect', 20, `${label}...`);
+                // Once downloading has started, stay in download stage so
+                // the final Reconfiguring/Committing pass doesn't flip back
+                // to the animated connect shimmer.
+                onProgress(downloading ? 'download' : 'connect', lastPct, `${label}...`);
                 return;
             }
 
-            // SteamCMD is giving real percentages — disable dir-scan path
+            // Real SteamCMD percentage received — disable dir-scan fallback
             stateCodeActive = true;
             downloading = true;
             const isRetry = pct < lastPct;
