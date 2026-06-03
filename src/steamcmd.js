@@ -168,8 +168,14 @@ async function installApp(appId, installDir, onProgress, onLog, signal) {
 
     let prevNetBytes   = netBaseline;
     let prevPollTime   = Date.now();
-    let smoothSpeedBps = 0;
+    let smoothSpeedBps = 0;  // EMA — drives the speed display only
     let acfTotal       = 0;
+
+    // Rolling 30-second window of {bytes, ts} samples — drives ETA only.
+    // Using total bytes at each sample point so the window is self-contained:
+    // windowBps = (newest.bytes - oldest.bytes) / (newest.ts - oldest.ts)
+    const WINDOW_SEC  = 30;
+    const speedWindow = []; // { bytes: cumulative NIC bytes, ts: ms }
 
     const netTimer = setInterval(() => {
         const netNow  = getNetBytesReceived();
@@ -177,15 +183,14 @@ async function installApp(appId, installDir, onProgress, onLog, signal) {
         const delta   = Math.max(0, netNow - prevNetBytes);
         const elapsed = Math.max(1, now - prevPollTime) / 1000;
 
-        // EMA (α=0.35) — responsive but not jittery
+        // EMA (α=0.35) — responsive, used for speed label display only
         if (delta > 0) {
             const instantBps = delta / elapsed;
             smoothSpeedBps = smoothSpeedBps === 0
                 ? instantBps
                 : 0.35 * instantBps + 0.65 * smoothSpeedBps;
         } else {
-            // No bytes this tick — decay speed toward zero so display clears
-            smoothSpeedBps *= 0.7;
+            smoothSpeedBps *= 0.7; // decay when idle so display clears
         }
 
         prevNetBytes = netNow;
@@ -196,6 +201,25 @@ async function installApp(appId, installDir, onProgress, onLog, signal) {
         // Wait for at least 2 MB before switching to download phase
         if (downloadedBytes < 2 * 1024 * 1024) return;
         downloading = true;
+
+        // Maintain rolling window — push current sample, evict anything older
+        // than WINDOW_SEC seconds so the window always reflects recent history
+        speedWindow.push({ bytes: netNow, ts: now });
+        while (speedWindow.length > 1 && (now - speedWindow[0].ts) > WINDOW_SEC * 1000) {
+            speedWindow.shift();
+        }
+
+        // Window speed = total bytes across the window / window duration.
+        // With ≥2 samples this is a true time-average; before that fall back
+        // to the EMA so ETA appears immediately rather than waiting 30 s.
+        let windowBps = smoothSpeedBps;
+        if (speedWindow.length >= 2) {
+            const oldest   = speedWindow[0];
+            const newest   = speedWindow[speedWindow.length - 1];
+            const winBytes = newest.bytes - oldest.bytes;
+            const winSec   = Math.max(1, newest.ts - oldest.ts) / 1000;
+            windowBps = winBytes / winSec;
+        }
 
         // Refresh ACF total on every tick until we have it (file may appear late)
         if (acfTotal === 0) {
@@ -212,7 +236,7 @@ async function installApp(appId, installDir, onProgress, onLog, signal) {
             lastPct = Math.max(lastPct, pct); // never go backwards
 
             const remaining = Math.max(0, acfTotal - downloadedBytes);
-            const etaSec    = smoothSpeedBps > 0 ? Math.round(remaining / smoothSpeedBps) : 0;
+            const etaSec    = windowBps > 0 ? Math.round(remaining / windowBps) : 0;
 
             let msg = `${lastLabel}... ${lastPct}%`;
             if (spd)                          msg += ` · ${spd}`;
@@ -220,7 +244,6 @@ async function installApp(appId, installDir, onProgress, onLog, signal) {
 
             onProgress('download', lastPct, msg);
         } else {
-            // No ACF yet — still show speed so the user sees activity
             const msg = spd ? `${lastLabel}... ${spd}` : `${lastLabel}...`;
             onProgress('download', lastPct, msg);
         }
