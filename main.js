@@ -25,8 +25,23 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, 'public', 'index.html'));
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+    createWindow();
+
+    if (app.isPackaged) {
+        const { autoUpdater } = require('electron-updater');
+        autoUpdater.on('update-available',  () => mainWindow?.webContents.send('update-available'));
+        autoUpdater.on('update-downloaded', () => mainWindow?.webContents.send('update-downloaded'));
+        autoUpdater.on('error', err => console.error('Updater:', err.message));
+        autoUpdater.checkForUpdates();
+    }
+});
+
 app.on('window-all-closed', () => app.quit());
+
+ipcMain.on('install-update', () => {
+    if (app.isPackaged) require('electron-updater').autoUpdater.quitAndInstall();
+});
 
 // ── Window controls ─────────────────────────────────────────────────────────
 ipcMain.on('window-minimize', () => mainWindow.minimize());
@@ -73,23 +88,44 @@ ipcMain.handle('get-forge-versions', async (_, mcVersion) => {
     return mc.getForgeVersions(mcVersion);
 });
 
+// ── Disk space check ─────────────────────────────────────────────────────────
+ipcMain.handle('check-disk-space', async (_, { installDir, requiredGB }) => {
+    try {
+        const root = path.parse(installDir).root || installDir;
+        const stats = await fs.promises.statfs(root);
+        const freeGB = (stats.bavail * stats.bsize) / (1024 ** 3);
+        return { freeGB: Math.round(freeGB * 10) / 10, sufficient: freeGB >= requiredGB };
+    } catch {
+        return { freeGB: null, sufficient: true }; // skip check if statfs unavailable
+    }
+});
+
 // ── Java detection ───────────────────────────────────────────────────────────
 ipcMain.handle('find-java', async () => {
+    const { execSync } = require('child_process');
+    const found = [];
+
+    // Check PATH first via 'where' — catches installs the hardcoded scan misses
+    try {
+        const out = execSync('where java', { timeout: 3000 }).toString();
+        out.split('\n').map(p => p.trim()).filter(p => p.endsWith('.exe')).forEach(p => {
+            if (p && !found.includes(p)) found.push(p);
+        });
+    } catch {}
+
+    // Scan common install directories
     const candidates = [
-        // Common Java install locations on Windows
         'C:\\Program Files\\Java',
         'C:\\Program Files\\Eclipse Adoptium',
         'C:\\Program Files\\Microsoft',
         path.join(os.homedir(), '.jdks'),
     ];
-    const found = [];
     for (const base of candidates) {
         if (!fs.existsSync(base)) continue;
         try {
-            const subdirs = fs.readdirSync(base);
-            for (const sub of subdirs) {
+            for (const sub of fs.readdirSync(base)) {
                 const javaExe = path.join(base, sub, 'bin', 'java.exe');
-                if (fs.existsSync(javaExe)) found.push(javaExe);
+                if (fs.existsSync(javaExe) && !found.includes(javaExe)) found.push(javaExe);
             }
         } catch {}
     }

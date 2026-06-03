@@ -80,6 +80,33 @@ body {
 .tb-btn:hover { background: var(--surface2); color: var(--text); }
 .tb-btn.close:hover { background: var(--error); color: #fff; }
 
+/* ── Update bar ───────────────────────────────────────────────────────────── */
+.update-bar {
+    background: rgba(46, 160, 67, 0.1);
+    border-bottom: 1px solid var(--success);
+    padding: 5px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 12px;
+    color: var(--success);
+    flex-shrink: 0;
+}
+
+.update-bar button {
+    background: none;
+    border: 1px solid var(--success);
+    color: var(--success);
+    border-radius: 4px;
+    padding: 3px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.update-bar button:hover { background: rgba(46, 160, 67, 0.2); }
+
 /* ── Layout ───────────────────────────────────────────────────────────────── */
 #app {
     display: flex;

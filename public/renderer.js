@@ -13,12 +13,29 @@ const STEPS = ['step-0','step-1','step-2','step-3','step-4','step-5'];
 // ── Boot ───────────────────────────────────────────────────────────────────
 (async () => {
     setupTitlebar();
+    setupUpdateBar();
     renderGameGrid();
     setupDirPicker();
     rsmAvailable = await api.invoke('check-rsm-installed');
     setupInstallProgress();
     gotoStep(0);
 })();
+
+// ── Update bar ─────────────────────────────────────────────────────────────
+function setupUpdateBar() {
+    api.receive('update-available', () => {
+        document.getElementById('updateMsg').textContent = 'An update is downloading in the background...';
+        document.getElementById('updateBar').style.display = 'flex';
+    });
+
+    api.receive('update-downloaded', () => {
+        document.getElementById('updateMsg').textContent = 'Update ready — restart to apply.';
+        const btn = document.getElementById('btnInstallUpdate');
+        btn.style.display = '';
+        btn.onclick = () => api.send('install-update');
+        document.getElementById('updateBar').style.display = 'flex';
+    });
+}
 
 // ── Titlebar ───────────────────────────────────────────────────────────────
 function setupTitlebar() {
@@ -222,6 +239,15 @@ function buildConfigForm() {
     if (nameField && !nameField.value) {
         nameField.value = `My ${selectedGame.displayName} Server`;
     }
+
+    // Auto-detect Java for games that need it
+    if (selectedGame.form.some(f => f.id === 'javaPath')) autoDetectJava();
+}
+
+async function autoDetectJava() {
+    const javas = await api.invoke('find-java');
+    const el = document.getElementById('f-javaPath');
+    if (el && !el.value && javas.length > 0) el.value = javas[0];
 }
 
 async function loadAsyncOptions(field) {
@@ -342,6 +368,16 @@ function setupInstallProgress() {
 }
 
 async function startInstall() {
+    const spaceCheck = await api.invoke('check-disk-space', {
+        installDir,
+        requiredGB: selectedGame.diskGB,
+    });
+    if (!spaceCheck.sufficient && spaceCheck.freeGB !== null) {
+        document.getElementById('footerStatus').textContent =
+            `Not enough disk space — need ~${selectedGame.diskGB} GB, only ${spaceCheck.freeGB.toFixed(1)} GB free.`;
+        return;
+    }
+
     gotoStep(4);
     document.getElementById('installLog').textContent = '';
 

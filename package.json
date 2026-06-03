@@ -10,9 +10,10 @@
   "author": "PhonicSpider",
   "license": "MIT",
   "dependencies": {
+    "7zip-min": "^1.4.5",
     "axios": "^1.6.0",
-    "extract-zip": "^2.0.1",
-    "7zip-min": "^1.4.5"
+    "electron-updater": "^6.8.3",
+    "extract-zip": "^2.0.1"
   },
   "devDependencies": {
     "electron": "^28.0.0",
@@ -34,6 +35,11 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "shortcutName": "Ronin Forge"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "t0xicVybez",
+      "repo": "ronin-forge"
     },
     "files": [
       "main.js",
