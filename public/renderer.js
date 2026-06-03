@@ -378,11 +378,14 @@ function showComplete() {
     document.getElementById('completeMsg').textContent =
         `${selectedGame.displayName} has been installed to ${installDir}`;
 
-    const addBtn   = document.getElementById('btnAddToRSM');
-    const rsmNote  = document.getElementById('rsmNotice');
-    const expBtn   = document.getElementById('btnExportJSON');
-    const openBtn  = document.getElementById('btnOpenFolder');
-    const startBtn = document.getElementById('btnStartOver');
+    const addBtn       = document.getElementById('btnAddToRSM');
+    const rsmNote      = document.getElementById('rsmNotice');
+    const expBtn       = document.getElementById('btnExportJSON');
+    const openBtn      = document.getElementById('btnOpenFolder');
+    const startBtn     = document.getElementById('btnStartOver');
+    const configNoteEl = document.getElementById('configNote');
+    const configMsgEl  = document.getElementById('configNoteMsg');
+    const configPathEl = document.getElementById('configNotePath');
 
     if (rsmAvailable) {
         addBtn.style.display = '';
@@ -390,6 +393,14 @@ function showComplete() {
     } else {
         addBtn.style.display = 'none';
         rsmNote.style.display = '';
+    }
+
+    if (installerResult.configNote) {
+        configNoteEl.style.display = '';
+        configMsgEl.textContent  = installerResult.configNote.message;
+        configPathEl.textContent = installerResult.configNote.path;
+    } else {
+        configNoteEl.style.display = 'none';
     }
 
     const entry = buildRSMEntry();

@@ -153,15 +153,24 @@ async function performInstall(gameId, installDir, formData, onProgress, onLog, s
 
         case 'ark-ase':
             await steam.installApp('376030', installDir, onProgress, onLog, signal);
-            return {};
+            return { configNote: {
+                message: 'Start your server once to generate its config, then shut it down and edit your settings in:',
+                path: path.join(installDir, 'ShooterGame', 'Saved', 'Config', 'WindowsServer', 'GameUserSettings.ini'),
+            }};
 
         case 'ark-asa':
             await steam.installApp('2430930', installDir, onProgress, onLog, signal);
-            return {};
+            return { configNote: {
+                message: 'Start your server once to generate its config, then shut it down and edit your settings in:',
+                path: path.join(installDir, 'ShooterGame', 'Saved', 'Config', 'WindowsServer', 'GameUserSettings.ini'),
+            }};
 
         case 'space-engineers':
             await steam.installApp('298740', installDir, onProgress, onLog, signal);
-            return {};
+            return { configNote: {
+                message: 'Start your server once to generate its config, then shut it down and edit your settings in:',
+                path: path.join(installDir, 'Instance', 'SpaceEngineers-Dedicated.cfg'),
+            }};
 
         case 'terraria':
             await steam.installApp('105600', installDir, onProgress, onLog, signal);
@@ -185,7 +194,10 @@ async function performInstall(gameId, installDir, formData, onProgress, onLog, s
 
         case 'conan-exiles':
             await steam.installApp('443030', installDir, onProgress, onLog, signal);
-            return {};
+            return { configNote: {
+                message: 'Start your server once to generate its config files, then shut it down and edit your settings in:',
+                path: path.join(installDir, 'ConanSandbox', 'Saved', 'Config', 'WindowsServer'),
+            }};
 
         case 'palworld':
             await steam.installApp('2394010', installDir, onProgress, onLog, signal);
@@ -217,98 +229,9 @@ async function writeGameConfig(gameId, installDir, formData, installerResult) {
         });
     }
 
-    if (gameId === 'ark-ase' || gameId === 'ark-asa') {
-        writeArkConfig(installDir, formData);
-    }
-
-    if (gameId === 'space-engineers') {
-        writeSEConfig(installDir, formData);
-    }
-
     if (gameId === '7-days-to-die') {
         write7DTDConfig(installDir, formData);
     }
-}
-
-function writeArkConfig(installDir, f) {
-    const configDir = path.join(installDir, 'ShooterGame', 'Saved', 'Config', 'WindowsServer');
-    fs.mkdirSync(configDir, { recursive: true });
-
-    const ini = [
-        '[SessionSettings]',
-        `SessionName=${f.serverName}`,
-        '',
-        '[ServerSettings]',
-        `ServerPassword=${f.serverPass || ''}`,
-        `ServerAdminPassword=${f.adminPassword || 'admin'}`,
-        `MaxPlayers=${f.maxPlayers || 70}`,
-        'RCONEnabled=True',
-        `RCONPort=${f.rconPort || 27020}`,
-        '',
-        '[/Script/Engine.GameSession]',
-        `MaxPlayers=${f.maxPlayers || 70}`,
-    ].join('\n');
-
-    fs.writeFileSync(path.join(configDir, 'GameUserSettings.ini'), ini, 'utf8');
-}
-
-function writeSEConfig(installDir, f) {
-    // SE reads config from the instance path passed via -path argument
-    const cfgDir = path.join(installDir, 'Instance');
-    fs.mkdirSync(cfgDir, { recursive: true });
-
-    const serverName  = f.serverName  || 'My Space Engineers Server';
-    const worldName   = f.worldName   || 'MyWorld';
-    const maxPlayers  = f.maxPlayers  || 16;
-    const port        = f.port        || 27016;
-    const steamPort   = f.steamPort   || 8766;
-    const password    = f.serverPass  || '';
-    const onlineMode  = password ? 'PRIVATE' : 'PUBLIC';
-    const gameMode    = f.gameMode    || 'Survival';
-
-    const xml = `<?xml version="1.0"?>
-<MyConfigDedicated xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-  <SessionSettings>
-    <OnlineMode>${onlineMode}</OnlineMode>
-    <GameMode>${gameMode}</GameMode>
-    <MaxPlayers>${maxPlayers}</MaxPlayers>
-    <AutoSaveInMinutes>5</AutoSaveInMinutes>
-    <EnableIngameScripts>false</EnableIngameScripts>
-    <EnableJetpack>true</EnableJetpack>
-    <EnableOxygen>true</EnableOxygen>
-    <AutoHealing>true</AutoHealing>
-    <EnableCopyPaste>true</EnableCopyPaste>
-    <Enable3rdPersonView>true</Enable3rdPersonView>
-    <SpaceCargoShipsEnabled>true</SpaceCargoShipsEnabled>
-    <EnableEncounters>true</EnableEncounters>
-    <PauseGameWhenEmpty>true</PauseGameWhenEmpty>
-  </SessionSettings>
-  <Administrators />
-  <Banned />
-  <Mods />
-  <ServerName>${serverName}</ServerName>
-  <WorldName>${worldName}</WorldName>
-  <ServerDescription></ServerDescription>
-  <ServerPassword>${password}</ServerPassword>
-  <GroupID>0</GroupID>
-  <ListenPort>${port}</ListenPort>
-  <SteamPort>${steamPort}</SteamPort>
-  <IP>0.0.0.0</IP>
-  <IPv6Enabled>false</IPv6Enabled>
-  <AutoRestartEnabled>false</AutoRestartEnabled>
-  <WatcherEnabled>false</WatcherEnabled>
-  <PauseGameWhenEmpty>true</PauseGameWhenEmpty>
-  <ReservedSlots>0</ReservedSlots>
-  <RemoteApiEnabled>false</RemoteApiEnabled>
-  <RemoteApiPort>0</RemoteApiPort>
-  <RemoteApiKey></RemoteApiKey>
-  <Scenario xsi:nil="true" />
-  <LoadWorld></LoadWorld>
-  <SaveName></SaveName>
-  <IgnoreLastSession>false</IgnoreLastSession>
-</MyConfigDedicated>`;
-
-    fs.writeFileSync(path.join(cfgDir, 'SpaceEngineers-Dedicated.cfg'), xml, 'utf8');
 }
 
 function write7DTDConfig(installDir, f) {
