@@ -111,33 +111,57 @@ async function installApp(appId, installDir, onProgress, onLog, signal, expected
     }, 1000);
 
     // ── Disk-space polling ──────────────────────────────────────────────────
-    // Measures how much free space has been consumed on the target drive as a
-    // proxy for bytes downloaded. Works even when SteamCMD stdout is silent.
-    let diskTimer  = null;
-    let freeBefore = 0;
-    const expectedBytes = expectedGB * 1024 * 1024 * 1024;
+    // Derives approximate download % from free-space delta on the install drive.
+    // Works even when SteamCMD stdout is silent (WriteConsoleW bypass on Windows).
+    //
+    // Two safeguards against false readings:
+    //   1. 15 s grace period — lets SteamCMD initialize and self-update before
+    //      we take a baseline, so those writes don't count as game download.
+    //   2. 20 % cap per poll — prevents a single anomalous measurement from
+    //      jumping the bar to an unrealistic value.
+    let diskTimer        = null;
+    let stateCodeWorking = false; // true once SteamCMD stdout gives real progress
+    const expectedBytes  = expectedGB * 1024 * 1024 * 1024;
 
-    try {
-        const root = path.parse(installDir).root || installDir;
-        const s = await fs.promises.statfs(root);
-        freeBefore = s.bavail * s.bsize;
+    if (expectedGB > 0) {
+        try {
+            const root        = path.parse(installDir).root || installDir;
+            const GRACE_MS    = 15_000;
+            const startAt     = Date.now() + GRACE_MS;
+            let freeBefore    = 0;
+            let baselineTaken = false;
 
-        diskTimer = setInterval(async () => {
-            try {
-                const s2 = await fs.promises.statfs(root);
-                const usedBytes = freeBefore - s2.bavail * s2.bsize;
-                // Ignore sub-10 MB changes (filesystem noise / other apps)
-                if (usedBytes < 10 * 1024 * 1024 || expectedBytes <= 0) return;
+            diskTimer = setInterval(async () => {
+                if (stateCodeWorking)     return; // state-code path is more accurate
+                if (Date.now() < startAt) return; // still in grace period
 
-                const pct = Math.min(95, Math.round((usedBytes / expectedBytes) * 100));
-                if (pct > lastPct) {
-                    lastPct     = pct;
-                    downloading = true;
-                    onProgress('download', pct, `Downloading... ~${pct}%`);
-                }
-            } catch {}
-        }, 3000);
-    } catch {}
+                try {
+                    const s    = await fs.promises.statfs(root);
+                    const free = s.bavail * s.bsize;
+
+                    if (!baselineTaken) {
+                        // First tick after grace — capture post-init baseline
+                        freeBefore    = free;
+                        baselineTaken = true;
+                        return;
+                    }
+
+                    const usedBytes = freeBefore - free;
+                    if (usedBytes < 25 * 1024 * 1024) return; // ignore < 25 MB noise
+
+                    const rawPct    = Math.min(95, Math.round((usedBytes / expectedBytes) * 100));
+                    // Cap single-poll jump to 20 % to guard against measurement spikes
+                    const reportPct = Math.min(lastPct + 20, rawPct);
+
+                    if (reportPct > lastPct) {
+                        lastPct     = reportPct;
+                        downloading = true;
+                        onProgress('download', reportPct, `Downloading... ~${reportPct}%`);
+                    }
+                } catch {}
+            }, 5000);
+        } catch {}
+    }
 
     await runSteamCMD(args, signal, (text) => {
         if (onLog) onLog(text);
@@ -173,8 +197,9 @@ async function installApp(appId, installDir, onProgress, onLog, signal, expected
             }
 
             // Real SteamCMD percentage is more accurate than disk polling
-            downloading = true;
-            const isRetry = pct < lastPct;
+            downloading      = true;
+            stateCodeWorking = true;
+            const isRetry    = pct < lastPct;
             lastPct = pct;
             onProgress('download', pct, isRetry ? `Retrying... ${pct}%` : `${label}... ${pct}%`);
         } else {
