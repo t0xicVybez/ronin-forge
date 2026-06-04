@@ -116,7 +116,8 @@ window.GAMES = [
         steamAppId: '376030',
         downloadMethod: 'steamcmd',
         form: [
-            { id: 'serverName',    label: 'Server Name',      type: 'text',     placeholder: 'My Ark Server',  required: true },
+            { id: 'serverName',    label: 'Server Name',      type: 'text',     placeholder: 'My Ark Server',  required: true,
+              hint: 'Avoid special characters: | ? & < >' },
             { id: 'map',           label: 'Map',              type: 'select',   options: ['TheIsland','ScorchedEarth','Ragnarok','Aberration','Extinction','Valguero','Genesis','CrystalIsles','Genesis2','LostIsland','Fjordur'], default: 'TheIsland' },
             { id: 'serverPass',    label: 'Server Password',  type: 'password', placeholder: 'Leave blank for no password' },
             { id: 'adminPassword', label: 'Admin Password',   type: 'password', placeholder: 'Required',        required: true },
@@ -131,7 +132,10 @@ window.GAMES = [
             playerListCommand: 'ListPlayers',
             path: (f, dir) => `${dir}\\ShooterGame\\Binaries\\Win64\\ShooterGameServer.exe`,
             workingDir: (f, dir) => dir,
-            args: (f, dir) => `${f.map}?listen?SessionName=${f.serverName}?MaxPlayers=${f.maxPlayers}?ServerPassword=${f.serverPass || ''}?ServerAdminPassword=${f.adminPassword} -server -log -Port=${f.port || 7777} -QueryPort=${f.queryPort || 27015}`,
+            args: (f, dir) => {
+                const name = (f.serverName || '').replace(/[|?&<>]/g, '');
+                return `${f.map}?listen?SessionName=${name}?MaxPlayers=${f.maxPlayers}?ServerPassword=${f.serverPass || ''}?ServerAdminPassword=${f.adminPassword} -server -log -Port=${f.port || 7777} -QueryPort=${f.queryPort || 27015}`;
+            },
             apiPort: (f) => String(f.rconPort || 27020),
             apiPass: (f) => f.adminPassword || '',
             logPath: (f, dir) => `${dir}\\ShooterGame\\Saved\\Logs`,
@@ -147,7 +151,8 @@ window.GAMES = [
         steamAppId: '2430930',
         downloadMethod: 'steamcmd',
         form: [
-            { id: 'serverName',    label: 'Server Name',      type: 'text',     placeholder: 'My ASA Server', required: true },
+            { id: 'serverName',    label: 'Server Name',      type: 'text',     placeholder: 'My ASA Server', required: true,
+              hint: 'Avoid special characters: | ? & < >' },
             { id: 'map',           label: 'Map',              type: 'select',   options: ['TheIsland_WP','ScorchedEarth_WP','Aberration_WP'], default: 'TheIsland_WP' },
             { id: 'serverPass',    label: 'Server Password',  type: 'password', placeholder: 'Leave blank for no password' },
             { id: 'adminPassword', label: 'Admin Password',   type: 'password', placeholder: 'Required', required: true },
@@ -161,7 +166,10 @@ window.GAMES = [
             playerListCommand: 'ListPlayers',
             path: (f, dir) => `${dir}\\ShooterGame\\Binaries\\Win64\\ArkAscendedServer.exe`,
             workingDir: (f, dir) => dir,
-            args: (f, dir) => `${f.map}?listen?SessionName=${f.serverName}?MaxPlayers=${f.maxPlayers}?ServerPassword=${f.serverPass || ''}?ServerAdminPassword=${f.adminPassword} -server -log -Port=${f.port || 7777}`,
+            args: (f, dir) => {
+                const name = (f.serverName || '').replace(/[|?&<>]/g, '');
+                return `${f.map}?listen?SessionName=${name}?MaxPlayers=${f.maxPlayers}?ServerPassword=${f.serverPass || ''}?ServerAdminPassword=${f.adminPassword} -server -log -Port=${f.port || 7777}`;
+            },
             apiPort: (f) => String(f.rconPort || 27020),
             apiPass: (f) => f.adminPassword || '',
             logPath: (f, dir) => `${dir}\\ShooterGame\\Saved\\Logs`,
