@@ -263,7 +263,7 @@ async function performInstall(gameId, installDir, formData, onProgress, onLog, s
 
         case 'ark-ase':
             await steam.installApp('376030', installDir, onProgress, onLog, signal);
-            scaffoldArkConfigs(installDir);
+            scaffoldArkConfigs(installDir, formData.serverName);
             return { configNote: {
                 message: 'Edit your server settings in:',
                 path: path.join(installDir, 'ShooterGame', 'Saved', 'Config', 'WindowsServer', 'GameUserSettings.ini'),
@@ -271,7 +271,7 @@ async function performInstall(gameId, installDir, formData, onProgress, onLog, s
 
         case 'ark-asa':
             await steam.installApp('2430930', installDir, onProgress, onLog, signal);
-            scaffoldArkConfigs(installDir);
+            scaffoldArkConfigs(installDir, formData.serverName);
             return { configNote: {
                 message: 'Edit your server settings in:',
                 path: path.join(installDir, 'ShooterGame', 'Saved', 'Config', 'WindowsServer', 'GameUserSettings.ini'),
@@ -332,7 +332,7 @@ async function performInstall(gameId, installDir, formData, onProgress, onLog, s
 // ShooterGame\Saved\Config\WindowsServer\ path that RSM and the server
 // runtime both expect. Without this the directory doesn't exist until the
 // first server run, so RSM can't find Game.ini immediately after install.
-function scaffoldArkConfigs(installDir) {
+function scaffoldArkConfigs(installDir, serverName) {
     const src  = path.join(installDir, 'ShooterGame', 'Config');
     const dest = path.join(installDir, 'ShooterGame', 'Saved', 'Config', 'WindowsServer');
     try {
@@ -350,7 +350,32 @@ function scaffoldArkConfigs(installDir) {
                 fs.copyFileSync(srcFile, destFile);
             }
         }
+
+        // Write SessionName into the INI rather than the launch args so any
+        // character (|, ', `, etc.) is valid — the INI has no shell interpretation.
+        if (serverName) {
+            const guiPath = path.join(dest, 'GameUserSettings.ini');
+            if (fs.existsSync(guiPath)) {
+                let content = fs.readFileSync(guiPath, 'utf8');
+                content = setIniValue(content, 'SessionSettings', 'SessionName', serverName);
+                fs.writeFileSync(guiPath, content, 'utf8');
+            }
+        }
     } catch { /* non-fatal — server will regenerate on first run */ }
+}
+
+// Set a key=value pair inside a named INI section. Adds the section and/or
+// key if they don't exist yet; replaces the value if the key already exists.
+function setIniValue(content, section, key, value) {
+    const header  = `[${section}]`;
+    const keyLine = new RegExp(`^${key}=.*$`, 'im');
+    if (content.includes(header)) {
+        if (keyLine.test(content)) {
+            return content.replace(keyLine, `${key}=${value}`);
+        }
+        return content.replace(header, `${header}\r\n${key}=${value}`);
+    }
+    return `${content.trimEnd()}\r\n\r\n${header}\r\n${key}=${value}\r\n`;
 }
 
 async function writeGameConfig(gameId, installDir, formData, installerResult) {
