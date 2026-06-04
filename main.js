@@ -337,9 +337,15 @@ function scaffoldArkConfigs(installDir) {
     const dest = path.join(installDir, 'ShooterGame', 'Saved', 'Config', 'WindowsServer');
     try {
         fs.mkdirSync(dest, { recursive: true });
-        for (const file of ['Game.ini', 'GameUserSettings.ini']) {
-            const srcFile  = path.join(src, file);
-            const destFile = path.join(dest, file);
+        // ARK ships Default*.ini templates; the runtime expects them without
+        // the Default prefix in the WindowsServer folder.
+        const copies = [
+            ['DefaultGame.ini',             'Game.ini'],
+            ['DefaultGameUserSettings.ini', 'GameUserSettings.ini'],
+        ];
+        for (const [srcName, destName] of copies) {
+            const srcFile  = path.join(src, srcName);
+            const destFile = path.join(dest, destName);
             if (fs.existsSync(srcFile) && !fs.existsSync(destFile)) {
                 fs.copyFileSync(srcFile, destFile);
             }
