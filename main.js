@@ -263,15 +263,17 @@ async function performInstall(gameId, installDir, formData, onProgress, onLog, s
 
         case 'ark-ase':
             await steam.installApp('376030', installDir, onProgress, onLog, signal);
+            scaffoldArkConfigs(installDir);
             return { configNote: {
-                message: 'Start your server once to generate its config, then shut it down and edit your settings in:',
+                message: 'Edit your server settings in:',
                 path: path.join(installDir, 'ShooterGame', 'Saved', 'Config', 'WindowsServer', 'GameUserSettings.ini'),
             }};
 
         case 'ark-asa':
             await steam.installApp('2430930', installDir, onProgress, onLog, signal);
+            scaffoldArkConfigs(installDir);
             return { configNote: {
-                message: 'Start your server once to generate its config, then shut it down and edit your settings in:',
+                message: 'Edit your server settings in:',
                 path: path.join(installDir, 'ShooterGame', 'Saved', 'Config', 'WindowsServer', 'GameUserSettings.ini'),
             }};
 
@@ -324,6 +326,25 @@ async function performInstall(gameId, installDir, formData, onProgress, onLog, s
         default:
             throw new Error(`Unknown game: ${gameId}`);
     }
+}
+
+// Copy ARK template configs from ShooterGame\Config\ into the
+// ShooterGame\Saved\Config\WindowsServer\ path that RSM and the server
+// runtime both expect. Without this the directory doesn't exist until the
+// first server run, so RSM can't find Game.ini immediately after install.
+function scaffoldArkConfigs(installDir) {
+    const src  = path.join(installDir, 'ShooterGame', 'Config');
+    const dest = path.join(installDir, 'ShooterGame', 'Saved', 'Config', 'WindowsServer');
+    try {
+        fs.mkdirSync(dest, { recursive: true });
+        for (const file of ['Game.ini', 'GameUserSettings.ini']) {
+            const srcFile  = path.join(src, file);
+            const destFile = path.join(dest, file);
+            if (fs.existsSync(srcFile) && !fs.existsSync(destFile)) {
+                fs.copyFileSync(srcFile, destFile);
+            }
+        }
+    } catch { /* non-fatal — server will regenerate on first run */ }
 }
 
 async function writeGameConfig(gameId, installDir, formData, installerResult) {
