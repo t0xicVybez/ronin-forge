@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog, shell, Notification } = require('el
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const apiServer = require('./src/api-server');
 
 // Must be set before app is ready so Windows uses this as the notification sender
 app.setAppUserModelId('Ronin Forge');
@@ -28,8 +29,12 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, 'public', 'index.html'));
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
     createWindow();
+
+    apiServer.init({ performInstall, writeGameConfig });
+    const _apiCfg = await loadApiConfig();
+    if (_apiCfg.enabled) apiServer.start(_apiCfg.port, _apiCfg.apiKey);
 
     if (app.isPackaged) {
         const { autoUpdater } = require('electron-updater');
@@ -455,3 +460,36 @@ ipcMain.handle('export-server-json', async (_, serverEntry) => {
     fs.writeFileSync(result.filePath, JSON.stringify([serverEntry], null, 2), 'utf8');
     return { success: true, exportPath: result.filePath };
 });
+
+// ── API server config ────────────────────────────────────────────────────────
+
+function getApiConfigPath() {
+    return path.join(app.getPath('userData'), 'forge-api-config.json');
+}
+
+async function loadApiConfig() {
+    try {
+        const raw = await fs.promises.readFile(getApiConfigPath(), 'utf8');
+        return { enabled: false, port: 3003, apiKey: '', ...JSON.parse(raw) };
+    } catch {
+        return { enabled: false, port: 3003, apiKey: '' };
+    }
+}
+
+async function saveApiConfig(cfg) {
+    await fs.promises.writeFile(getApiConfigPath(), JSON.stringify(cfg, null, 2), 'utf8');
+}
+
+ipcMain.handle('get-api-config', async () => loadApiConfig());
+
+ipcMain.handle('save-api-config', async (_, cfg) => {
+    await saveApiConfig(cfg);
+    if (cfg.enabled) {
+        apiServer.start(cfg.port, cfg.apiKey);
+    } else {
+        apiServer.stop();
+    }
+    return { success: true };
+});
+
+ipcMain.handle('generate-api-key', () => apiServer.generateApiKey());
