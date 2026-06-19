@@ -4,7 +4,7 @@
   "description": "Game server provisioner and setup wizard — generates configurations ready to import into Ronin Server Manager.",
   "main": "main.js",
   "scripts": {
-    "start": "electron .",
+    "start": "set ELECTRON_RUN_AS_NODE=&&electron .",
     "dist": "electron-builder --windows"
   },
   "author": "PhonicSpider",
@@ -13,7 +13,8 @@
     "7zip-min": "^1.4.5",
     "axios": "^1.6.0",
     "electron-updater": "^6.8.3",
-    "extract-zip": "^2.0.1"
+    "extract-zip": "^2.0.1",
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "electron": "^28.0.0",
@@ -44,6 +45,7 @@
     "files": [
       "main.js",
       "preload.js",
+      "ronin-agent.js",
       "public/**/*",
       "src/**/*",
       "node_modules/**/*"

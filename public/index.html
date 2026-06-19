@@ -1,188 +1,425 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';">
-    <title>Ronin Forge</title>
-    <link rel="stylesheet" href="styles.css">
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';">
+  <title>Ronin Forge</title>
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
-<!-- Titlebar -->
-<div id="titlebar">
-    <div id="titlebar-logo">
-        <span class="icon">🔥</span>
-        <span><span class="brand">Ronin</span> Forge</span>
+<!-- Red gradient accent bar (identical to Citadel) -->
+<div class="top-accent-bar"></div>
+
+<div class="app-shell">
+
+  <!-- Custom frameless titlebar -->
+  <div class="titlebar">
+    <div class="titlebar-brand">
+      <span class="titlebar-icon">⚒</span>
+      <span class="titlebar-title">Ronin Forge</span>
     </div>
-    <div id="titlebar-controls">
-        <button class="tb-btn" id="btnMinimize" title="Minimize">—</button>
-        <button class="tb-btn close" id="btnClose" title="Close">✕</button>
+    <div class="titlebar-controls">
+      <button class="titlebar-btn" id="btnMinimize" title="Minimize">&#8212;</button>
+      <button class="titlebar-btn close" id="btnClose" title="Close">&#10005;</button>
     </div>
-</div>
+  </div>
 
-<div id="updateBar" class="update-bar" style="display:none">
-    <span id="updateMsg"></span>
-    <button id="btnInstallUpdate" style="display:none">Restart &amp; Update</button>
-</div>
+  <!-- Dash layout: sidebar + main -->
+  <div class="dash-layout">
 
-<div id="app">
-    <!-- Sidebar -->
-    <nav id="sidebar">
-        <div class="sidebar-label">Setup Wizard</div>
-        <div class="step-item active" data-step="0">
-            <div class="step-num"><span>1</span></div>
-            <div class="step-label">Select Game</div>
-        </div>
-        <div class="step-item" data-step="1">
-            <div class="step-num"><span>2</span></div>
-            <div class="step-label">Install Location</div>
-        </div>
-        <div class="step-item" data-step="2">
-            <div class="step-num"><span>3</span></div>
-            <div class="step-label">Configure</div>
-        </div>
-        <div class="step-item" data-step="3">
-            <div class="step-num"><span>4</span></div>
-            <div class="step-label">Review</div>
-        </div>
-        <div class="step-item" data-step="4">
-            <div class="step-num"><span>5</span></div>
-            <div class="step-label">Installing</div>
-        </div>
-        <div class="step-item" data-step="5">
-            <div class="step-num"><span>6</span></div>
-            <div class="step-label">Complete</div>
-        </div>
-    </nav>
+    <!-- ── Sidebar ── -->
+    <aside class="dash-sidebar">
+      <div class="sidebar-logo">
+        <span class="sidebar-logo-icon">⚒</span>
+        <span class="sidebar-logo-text">Forge</span>
+      </div>
 
-    <!-- Main content -->
-    <div id="main">
+      <div class="sb-section">
+        <div class="sb-label">Navigation</div>
+        <nav class="side-nav">
+          <div class="side-nav-item active" data-view="install">
+            <i class="nav-icon">⬇</i> Install
+          </div>
+          <div class="side-nav-item" data-view="jobs">
+            <i class="nav-icon">📋</i> Jobs
+          </div>
+          <div class="side-nav-item" data-view="rsm">
+            <i class="nav-icon">⚡</i> RSM
+          </div>
+          <div class="side-nav-item" data-view="settings">
+            <i class="nav-icon">⚙</i> Settings
+          </div>
+        </nav>
+      </div>
 
-        <!-- Step 0: Select Game -->
+      <div class="sb-footer">
+        <div class="sb-version" id="appVersion">Ronin Forge</div>
+      </div>
+    </aside>
+
+    <!-- ── Main area ── -->
+    <div class="dash-main">
+
+      <!-- Top bar with breadcrumb + RSM status -->
+      <div class="dash-topbar">
+        <div class="breadcrumb">
+          <span class="crumb">Forge</span>
+          <span class="crumb-sep">›</span>
+          <span class="crumb active" id="breadcrumbCurrent">Install</span>
+        </div>
+        <div class="topbar-right">
+          <span class="status-dot offline" id="rsmDot"></span>
+          <span class="topbar-status-label" id="rsmTopbarLabel">RSM Offline</span>
+        </div>
+      </div>
+
+      <!-- ════════════════════════════════════════
+           VIEW: Install (wizard)
+           ════════════════════════════════════════ -->
+      <div class="page-content" id="viewInstall">
+
+        <!-- Horizontal step indicator -->
+        <div class="wizard-steps">
+          <div class="wizard-step active" data-step="0">1 · Select</div>
+          <div class="wizard-step" data-step="1">2 · Location</div>
+          <div class="wizard-step" data-step="2">3 · Configure</div>
+          <div class="wizard-step" data-step="3">4 · Review</div>
+          <div class="wizard-step" data-step="4">5 · Installing</div>
+          <div class="wizard-step" data-step="5">6 · Done</div>
+        </div>
+
+        <!-- Step 0 · Select Game -->
         <div class="step-view active" id="step-0">
-            <h2>Select a Game</h2>
-            <p class="subtitle">Choose the game server you want to set up. Ronin Forge will download and configure it automatically.</p>
-            <div class="game-grid" id="gameGrid"></div>
+          <div class="page-header">
+            <div>
+              <div class="page-title">Select a Game</div>
+              <div class="page-sub">Choose the server type. Forge will download and configure it automatically.</div>
+            </div>
+          </div>
+          <div class="game-grid" id="gameGrid"></div>
         </div>
 
-        <!-- Step 1: Install Location -->
+        <!-- Step 1 · Install Location -->
         <div class="step-view" id="step-1">
-            <h2>Install Location</h2>
-            <p class="subtitle">Choose where to install the server files. Use a fast drive with enough free space.</p>
-
-            <div class="field full-width" style="margin-bottom:8px;">
-                <label>Install Directory</label>
-                <div class="dir-picker">
-                    <input type="text" id="installDir" placeholder="e.g. C:\Servers\MyServer" spellcheck="false">
-                    <button class="btn btn-secondary" id="btnBrowseDir">Browse</button>
-                </div>
-                <div class="dir-info" id="dirInfo">Enter or browse to a folder.</div>
+          <div class="page-header">
+            <div>
+              <div class="page-title">Install Location</div>
+              <div class="page-sub">Choose a folder on a fast drive with enough free space.</div>
             </div>
+          </div>
 
-            <div class="field" style="margin-top:16px;">
-                <label>Estimated Disk Usage</label>
-                <div id="diskEstimate" style="font-size:15px;font-weight:600;margin-top:2px;">—</div>
+          <div class="section-card">
+            <div class="section-title">Install Directory</div>
+            <div class="section-sub">Server files will be placed inside this folder.</div>
+            <div class="field">
+              <label class="field-label">Path</label>
+              <div class="path-row">
+                <input type="text" class="field-input" id="installDir" placeholder="e.g. C:\Servers\MyServer" spellcheck="false">
+                <button class="btn btn-ghost btn-sm" id="btnBrowseDir">Browse</button>
+              </div>
+              <div class="dir-info" id="dirInfo">Enter or browse to a folder.</div>
             </div>
+          </div>
+
+          <div class="section-card">
+            <div class="section-header">
+              <span class="section-title">Disk Space</span>
+            </div>
+            <div style="display:flex;gap:24px;">
+              <div>
+                <div class="field-label">Required</div>
+                <div id="diskEstimate" style="font-size:var(--font-md);font-weight:700;margin-top:4px;">—</div>
+              </div>
+              <div id="diskFreeWrap" style="display:none">
+                <div class="field-label">Available</div>
+                <div id="diskFree" style="font-size:var(--font-md);font-weight:700;margin-top:4px;">—</div>
+              </div>
+            </div>
+          </div>
         </div>
 
-        <!-- Step 2: Configure -->
+        <!-- Step 2 · Configure -->
         <div class="step-view" id="step-2">
-            <h2 id="configTitle">Configure Server</h2>
-            <p class="subtitle">Set up your server's name, ports, and credentials.</p>
-            <div class="form-grid" id="configForm"></div>
+          <div class="page-header">
+            <div>
+              <div class="page-title" id="configTitle">Configure Server</div>
+              <div class="page-sub">Set your server name, ports, and credentials.</div>
+            </div>
+          </div>
+          <div class="section-card" style="flex:1;overflow:hidden;display:flex;flex-direction:column;">
+            <div class="config-grid" id="configForm"></div>
+          </div>
         </div>
 
-        <!-- Step 3: Review -->
+        <!-- Step 3 · Review -->
         <div class="step-view" id="step-3">
-            <h2>Review</h2>
-            <p class="subtitle">Everything looks good? Click Install to begin downloading and setting up your server.</p>
+          <div class="page-header">
+            <div>
+              <div class="page-title">Review</div>
+              <div class="page-sub">Confirm your settings before installation begins.</div>
+            </div>
+          </div>
+          <div class="section-card" style="flex:1;overflow:hidden;display:flex;flex-direction:column;">
             <div class="review-table" id="reviewTable"></div>
-            <div class="large-game-warning" id="largeGameWarning" style="display:none">
-                <span class="large-game-warning-icon">⏱</span>
-                <div>
-                    <strong>Large download</strong>
-                    <p id="largeGameMsg"></p>
-                </div>
-            </div>
+          </div>
+          <div class="alert alert-warn" id="largeGameWarning" style="display:none">
+            <span>⏱</span>
+            <div><strong>Large download</strong><br><span id="largeGameMsg"></span></div>
+          </div>
         </div>
 
-        <!-- Step 4: Installing -->
+        <!-- Step 4 · Installing -->
         <div class="step-view" id="step-4">
-            <h2>Installing</h2>
-            <p class="subtitle">Please wait while Ronin Forge downloads and configures your server.</p>
-
-            <div id="installStage">Preparing...</div>
-            <div id="progressMsg">Starting installation...</div>
-            <div class="progress-track">
-                <div class="progress-fill" id="progressFill"></div>
+          <div class="page-header">
+            <div>
+              <div class="page-title">Installing</div>
+              <div class="page-sub">Please keep this window open until the installation completes.</div>
             </div>
-            <div id="installLog"></div>
+          </div>
+          <div class="section-card">
+            <div class="install-stage" id="installStage">Preparing...</div>
+            <div class="progress-bar">
+              <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <div class="progress-msg" id="progressMsg">Starting installation…</div>
+          </div>
+          <div class="install-log" id="installLog"></div>
         </div>
 
-        <!-- Step 5: Complete -->
+        <!-- Step 5 · Complete -->
         <div class="step-view" id="step-5">
-            <div class="complete-center">
-                <div class="success-icon">✓</div>
-                <h2>Server Ready!</h2>
-                <p id="completeMsg">Your server has been installed and configured successfully.</p>
-
-                <div class="complete-actions">
-                    <button class="btn btn-primary" id="btnAddToRSM" style="display:none">
-                        Add to Ronin Server Manager
-                    </button>
-                    <button class="btn btn-secondary" id="btnExportJSON">
-                        Export as .json file
-                    </button>
-                    <button class="btn btn-ghost" id="btnOpenFolder">
-                        Open Install Folder
-                    </button>
-                    <button class="btn btn-ghost" id="btnStartOver">
-                        Set Up Another Server
-                    </button>
-                </div>
-
-                <div class="config-note" id="configNote" style="display:none">
-                    <div class="config-note-title">⚠ First-run setup required</div>
-                    <p id="configNoteMsg"></p>
-                    <div class="config-note-path" id="configNotePath"></div>
-                </div>
-
-                <div class="rsm-notice" id="rsmNotice" style="display:none">
-                    RSM not detected. Use "Export as .json" and import it manually, or install
-                    <a href="#" style="color:var(--accent)">Ronin Server Manager</a> first.
-                </div>
+          <div class="section-card">
+            <div class="complete-hero">
+              <div class="complete-icon">✓</div>
+              <div class="complete-title">Server Ready!</div>
+              <div class="complete-msg" id="completeMsg">Your server has been installed and configured.</div>
+              <div id="rsmMethodBadge" class="rsm-method-badge" style="display:none">
+                ⚡ Added to RSM via live API
+              </div>
             </div>
+
+            <div class="config-note" id="configNote" style="display:none">
+              ⚠ <span id="configNoteMsg"></span>
+              <span class="config-note-path" id="configNotePath"></span>
+            </div>
+
+            <div class="alert alert-info" id="rsmNotice" style="display:none;margin-top:14px;">
+              RSM not detected. Use Export to save the server entry for later import.
+            </div>
+
+            <div class="complete-actions">
+              <button class="btn btn-primary" id="btnAddToRSM" style="display:none">
+                Add to RSM
+              </button>
+              <button class="btn btn-ghost" id="btnExportJSON">Export .json</button>
+              <button class="btn btn-ghost" id="btnOpenFolder">Open Folder</button>
+              <button class="btn btn-ghost" id="btnStartOver">Install Another</button>
+            </div>
+          </div>
         </div>
 
-        <!-- Modpack modal (Forge / Fabric only) -->
-        <div id="modpackModal" class="modal-overlay" style="display:none">
-            <div class="modal">
-                <h3>Add a Modpack <span class="tag">Optional</span></h3>
-                <p class="modal-subtitle">Install a Modrinth modpack (.mrpack) to automatically populate your mods folder. Only server-compatible mods are installed. You can skip this and add mods manually later.</p>
-                <div class="field full-width" style="margin-top:20px">
-                    <label>Modrinth Pack (.mrpack)</label>
-                    <div class="path-row">
-                        <input type="text" id="mrpackInput" placeholder="Browse for .mrpack file or paste a download URL">
-                        <button class="btn btn-secondary" onclick="browseMrpack()">Browse</button>
-                    </div>
-                    <div class="hint">Supports local .mrpack files and direct Modrinth download URLs</div>
-                </div>
-                <div class="modal-actions">
-                    <button class="btn btn-ghost" id="btnSkipMods">Skip — no mods</button>
-                    <button class="btn btn-primary" id="btnContinueMods">Continue →</button>
-                </div>
-            </div>
+        <!-- Wizard footer (Back / status / Next) -->
+        <div class="wizard-footer">
+          <button class="btn btn-ghost" id="btnBack" disabled>← Back</button>
+          <span class="footer-status" id="footerStatus"></span>
+          <button class="btn btn-primary" id="btnNext" disabled>Select a Game</button>
         </div>
 
-        <!-- Footer -->
-        <div id="footer">
-            <button class="btn btn-ghost" id="btnBack" disabled>← Back</button>
-            <div style="display:flex;gap:10px;align-items:center;">
-                <span id="footerStatus" style="font-size:12px;color:var(--text-mute)"></span>
-                <button class="btn btn-primary" id="btnNext" disabled>Select a Game</button>
-            </div>
+      </div><!-- /viewInstall -->
+
+      <!-- ════════════════════════════════════════
+           VIEW: Jobs
+           ════════════════════════════════════════ -->
+      <div class="page-content hidden" id="viewJobs">
+        <div class="page-header">
+          <div>
+            <div class="page-title">Jobs</div>
+            <div class="page-sub">Installation history for this session.</div>
+          </div>
         </div>
+        <div class="section-card" style="flex:1;overflow:auto;">
+          <div id="jobsContent">
+            <div class="empty-state">
+              <div class="empty-icon">📋</div>
+              <div class="empty-title">No jobs yet</div>
+              <div class="empty-sub">Install a server to see it listed here.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ════════════════════════════════════════
+           VIEW: RSM
+           ════════════════════════════════════════ -->
+      <div class="page-content hidden" id="viewRsm">
+        <div class="page-header">
+          <div>
+            <div class="page-title">Ronin Server Manager</div>
+            <div class="page-sub">Live status of the local RSM instance.</div>
+          </div>
+          <button class="btn btn-ghost btn-sm" id="btnRefreshRSM">↻ Refresh</button>
+        </div>
+
+        <div class="section-card">
+          <div class="section-header">
+            <span class="section-title">Connection</span>
+          </div>
+          <div class="rsm-connection-row">
+            <span class="status-dot offline" id="rsmViewDot"></span>
+            <span class="rsm-connection-label" id="rsmViewLabel">Checking…</span>
+          </div>
+          <div class="rsm-connection-url" id="rsmViewUrl" style="margin-top:4px;"></div>
+        </div>
+
+        <div class="section-card" style="flex:1;overflow:auto;">
+          <div class="section-header">
+            <span class="section-title">Managed Servers</span>
+            <span class="badge badge-offline" id="rsmServerCount">—</span>
+          </div>
+          <div id="rsmServerList">
+            <div class="empty-state">
+              <div class="empty-icon">⚡</div>
+              <div class="empty-title">RSM offline</div>
+              <div class="empty-sub">Start Ronin Server Manager to see your servers here.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ════════════════════════════════════════
+           VIEW: Settings
+           ════════════════════════════════════════ -->
+      <div class="page-content hidden" id="viewSettings">
+        <div class="page-header">
+          <div>
+            <div class="page-title">Settings</div>
+            <div class="page-sub">API server, Citadel agent, and RSM connection.</div>
+          </div>
+        </div>
+
+        <!-- REST API -->
+        <div class="section-card">
+          <div class="section-header">
+            <div>
+              <div class="section-title">REST API</div>
+              <div class="section-sub">Allow Citadel to trigger installs remotely.</div>
+            </div>
+          </div>
+          <div class="settings-grid">
+            <div class="toggle-row">
+              <span style="font-size:var(--font-base);">Enable REST API</span>
+              <label class="toggle">
+                <input type="checkbox" id="apiEnabled">
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+            <div class="field">
+              <label class="field-label">Port</label>
+              <input type="number" class="field-input" id="apiPort" value="3003" min="1024" max="65535" style="width:120px;">
+            </div>
+            <div class="field">
+              <label class="field-label">API Key</label>
+              <div class="key-display" id="apiKeyDisplay">—</div>
+              <div style="display:flex;gap:8px;margin-top:6px;">
+                <button class="btn btn-ghost btn-sm" id="btnGenerateKey">Generate New Key</button>
+                <button class="btn btn-ghost btn-sm" id="btnCopyKey">Copy</button>
+              </div>
+            </div>
+            <div>
+              <button class="btn btn-primary btn-sm" id="btnSaveApi">Save API Settings</button>
+              <span id="apiSaveStatus" style="font-size:var(--font-sm);color:#44dd88;margin-left:10px;display:none;">Saved ✓</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Citadel Agent -->
+        <div class="section-card">
+          <div class="section-header">
+            <div>
+              <div class="section-title">Citadel Agent</div>
+              <div class="section-sub">Connect to the Ronin Citadel portal for remote management.</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;">
+              <span class="status-dot offline" id="citadelDot"></span>
+              <span style="font-size:var(--font-sm);color:var(--text-muted);" id="citadelStatusLabel">Disconnected</span>
+            </div>
+          </div>
+          <div class="settings-grid">
+            <div class="toggle-row">
+              <span style="font-size:var(--font-base);">Enable Agent</span>
+              <label class="toggle">
+                <input type="checkbox" id="agentEnabled">
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+            <div class="field">
+              <label class="field-label">Portal URL</label>
+              <input type="text" class="field-input" id="agentUrl" placeholder="https://your-citadel.com">
+            </div>
+            <div class="field">
+              <label class="field-label">Agent Token</label>
+              <input type="password" class="field-input" id="agentToken" placeholder="Paste token from Citadel → Servers → Generate">
+            </div>
+            <div>
+              <button class="btn btn-primary btn-sm" id="btnSaveAgent">Save Agent Settings</button>
+              <span id="agentSaveStatus" style="font-size:var(--font-sm);color:#44dd88;margin-left:10px;display:none;">Saved ✓</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- RSM Connection -->
+        <div class="section-card">
+          <div class="section-header">
+            <div>
+              <div class="section-title">RSM Connection</div>
+              <div class="section-sub">Auto-detected from RSM's local config. Override if needed.</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;">
+              <span class="status-dot offline" id="rsmSettingsDot"></span>
+              <span style="font-size:var(--font-sm);color:var(--text-muted);" id="rsmSettingsLabel">Checking…</span>
+            </div>
+          </div>
+          <div class="settings-grid">
+            <div class="field">
+              <label class="field-label">RSM API URL (auto-detected)</label>
+              <div class="key-display" id="rsmAutoUrl">—</div>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /viewSettings -->
+
+    </div><!-- /dash-main -->
+  </div><!-- /dash-layout -->
+
+  <!-- Update notification bar -->
+  <div class="update-bar" id="updateBar">
+    <span>⬆</span>
+    <span id="updateMsg"></span>
+    <button class="btn btn-ghost btn-sm" id="btnInstallUpdate" style="display:none">Restart &amp; Update</button>
+  </div>
+
+</div><!-- /app-shell -->
+
+<!-- Modpack modal -->
+<div id="modpackModal" class="modal-overlay">
+  <div class="modal-card">
+    <div class="modal-title">Modpack <span class="badge badge-warn">Optional</span></div>
+    <div class="modal-sub">Install a Modrinth modpack (.mrpack) to auto-populate your mods folder. Only server-compatible mods are installed. You can skip this and add mods manually later.</div>
+    <div class="field">
+      <label class="field-label">Modrinth Pack (.mrpack)</label>
+      <div class="path-row">
+        <input type="text" class="field-input" id="mrpackInput" placeholder="Browse for .mrpack or paste a URL">
+        <button class="btn btn-ghost btn-sm" onclick="browseMrpack()">Browse</button>
+      </div>
+      <div class="field-hint">Supports local files and direct Modrinth download URLs</div>
     </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="btnSkipMods">Skip</button>
+      <button class="btn btn-primary" id="btnContinueMods">Continue →</button>
+    </div>
+  </div>
 </div>
 
 <script src="configs/games.js"></script>

@@ -31,9 +31,29 @@ async function ensureSteamCMD(onProgress) {
     return STEAMCMD_EXE;
 }
 
+// Buffer a readable stream and emit complete lines (stripped of \r) to onLine.
+// SteamCMD sends output in arbitrary chunk sizes; without this, a single
+// "Update state ... progress: 45.32 ..." line can arrive as two separate data
+// events and regex matches against both halves will fail.
+function bufferLines(stream, onLine) {
+    let buf = '';
+    stream.setEncoding('utf8');
+    stream.on('data', chunk => {
+        buf += chunk;
+        let idx;
+        while ((idx = buf.indexOf('\n')) !== -1) {
+            const line = buf.slice(0, idx).replace(/\r$/, '');
+            buf = buf.slice(idx + 1);
+            if (line.length) onLine(line);
+        }
+    });
+    stream.on('end', () => { if (buf.length) onLine(buf); });
+}
+
 function runSteamCMD(args, signal, onLine) {
     return new Promise((resolve, reject) => {
-        const proc = spawn(STEAMCMD_EXE, args, { cwd: STEAMCMD_DIR });
+        const proc = spawn(STEAMCMD_EXE, args, { cwd: STEAMCMD_DIR, windowsHide: true });
+        let sawSelfUpdate = false;
 
         if (signal) {
             signal.addEventListener('abort', () => {
@@ -44,11 +64,19 @@ function runSteamCMD(args, signal, onLine) {
             });
         }
 
-        proc.stdout.on('data', (data) => onLine(data.toString()));
-        proc.stderr.on('data', (data) => onLine(data.toString()));
+        const handleLine = (line) => {
+            onLine(line);
+            if (/Update complete, launching|Installing update|Extracting package/i.test(line)) {
+                sawSelfUpdate = true;
+            }
+        };
+
+        bufferLines(proc.stdout, handleLine);
+        bufferLines(proc.stderr, handleLine);
 
         proc.on('close', (code) => {
-            if (code === 0 || code === 7) resolve();
+            if (code === 0) resolve({ code, sawSelfUpdate });
+            else if (code === 7 && sawSelfUpdate) resolve({ code, sawSelfUpdate });
             else reject(new Error(`SteamCMD exited with code ${code}`));
         });
 
@@ -131,7 +159,7 @@ async function installApp(appId, installDir, onProgress, onLog, signal) {
 
     // Snapshot network bytes before SteamCMD touches anything.
     // All bytes received after this point are attributed to the download.
-    const netBaseline = getNetBytesReceived();
+    let netBaseline = getNetBytesReceived();
 
     const args = [
         '+force_install_dir', installDir,
@@ -252,9 +280,11 @@ async function installApp(appId, installDir, onProgress, onLog, signal) {
     // ── SteamCMD stdout parsing ──────────────────────────────────────────────
     // Only used for: (a) connect-phase labels, (b) non-download phase labels
     // (Preallocating, Verifying, Committing). Does NOT drive the progress bar.
-    await runSteamCMD(args, signal, (text) => {
+    const handleLine = (text) => {
+        // Suppress spammy Update state lines from the log panel (shown via progress bar instead)
         if (onLog && !text.trimStart().startsWith('Update state')) onLog(text);
 
+        // Connect-phase labels (before download begins)
         if (!downloading) {
             for (const { match, pct, msg } of CONNECT_MESSAGES) {
                 if (text.includes(match)) {
@@ -268,12 +298,47 @@ async function installApp(appId, installDir, onProgress, onLog, signal) {
         const stateMatch = text.match(/Update state \((0x[\da-f]+)\)\s+([^,\n]+)/i);
         if (!stateMatch) return;
 
-        const code  = stateMatch[1].toLowerCase();
-        const label = STATE_LABELS[code] || stateMatch[2].trim();
-
-        // Keep lastLabel fresh so the network timer uses the right verb
+        const stateCode  = stateMatch[1].toLowerCase();
+        const label      = STATE_LABELS[stateCode] || stateMatch[2].trim();
         lastLabel = label;
-    });
+
+        // Parse SteamCMD's own progress numbers: "progress: 45.32 (3823456782 / 8437485632)"
+        // Use these as the authoritative percentage — network stats provide speed/ETA on top.
+        const progMatch = text.match(/progress:\s+([\d.]+)\s+\(\d+\s*\/\s*\d+\)/i);
+        if (progMatch) {
+            const pct = Math.min(95, Math.round(parseFloat(progMatch[1])));
+            lastPct     = Math.max(lastPct, pct);
+            downloading = true;
+
+            const spd = smoothSpeedBps > 1024 ? formatSpeed(smoothSpeedBps) : null;
+            let msg = `${label}... ${lastPct}%`;
+            if (spd) msg += ` · ${spd}`;
+            onProgress('download', lastPct, msg);
+        }
+    };
+
+    const firstRun = await runSteamCMD(args, signal, handleLine);
+
+    // SteamCMD self-update: exit 7 means it updated itself but didn't install
+    // the game. Re-run with the same args so the actual install happens.
+    if (firstRun.code === 7 && firstRun.sawSelfUpdate) {
+        onLog?.('[steamcmd] Self-update complete — restarting install...');
+        onProgress('connect', 5, 'SteamCMD updated, restarting…');
+
+        // Reset all download-phase state so the second run tracks cleanly
+        downloading    = false;
+        lastPct        = 0;
+        lastMsg        = 'Starting Steam...';
+        lastLabel      = 'Downloading';
+        elapsedSec     = 0;
+        smoothSpeedBps = 0;
+        speedWindow.length = 0;
+        netBaseline    = getNetBytesReceived();
+        prevNetBytes   = netBaseline;
+        prevPollTime   = Date.now();
+
+        await runSteamCMD(args, signal, handleLine);
+    }
 
     clearInterval(elapsedTimer);
     clearInterval(netTimer);
